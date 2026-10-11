@@ -35,6 +35,16 @@ body {
 }
 
 button,
-a {
+a,
+select,
+input {
   -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--secondary) 70%, white);
+  outline-offset: 3px;
 }

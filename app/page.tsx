@@ -116,7 +116,7 @@ export default function Home() {
         <div className="mx-auto flex max-w-md items-center justify-around text-[11px] font-bold text-[var(--text-secondary)]">
           <button className="flex flex-col items-center gap-1.5 text-[var(--primary)]"><span className="text-lg">⌂</span>Home</button>
           <button className="flex flex-col items-center gap-1.5"><span className="text-lg">◫</span>Activity</button>
-          <button className="flex flex-col items-center gap-1.5"><span className="text-lg">◉</span>Balances</button>
+          <Link href="/balances" className="flex flex-col items-center gap-1.5"><span className="text-lg">◉</span>Balances</Link>
           <button className="flex flex-col items-center gap-1.5"><span className="text-lg">☻</span>Profile</button>
         </div>
       </nav>
