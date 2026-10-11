@@ -100,9 +100,9 @@ export default function Home() {
               ))}
               <div className="flex size-10 items-center justify-center rounded-full border-2 border-white bg-[var(--charcoal)] text-xs font-bold text-white">+3</div>
             </div>
-            <button className="mt-8 w-full rounded-full border border-[var(--border-subtle)] py-3 text-sm font-bold text-[var(--charcoal)]">
+            <Link href="/groups/room-304-boys" className="mt-8 block w-full rounded-full border border-[var(--border-subtle)] py-3 text-center text-sm font-bold text-[var(--charcoal)]">
               View group details
-            </button>
+            </Link>
           </aside>
         </div>
       </div>
