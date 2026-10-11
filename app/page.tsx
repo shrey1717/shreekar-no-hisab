@@ -107,10 +107,10 @@ export default function Home() {
         </div>
       </div>
 
-      <button className="fixed bottom-20 right-5 flex items-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(240,93,72,0.3)] transition hover:bg-[var(--primary-dark)] sm:bottom-8 sm:right-8">
+      <Link href="/add-expense" className="fixed bottom-20 right-5 flex items-center gap-2 rounded-full bg-[var(--primary)] px-5 py-3.5 text-sm font-extrabold text-white shadow-[0_10px_24px_rgba(240,93,72,0.3)] transition hover:bg-[var(--primary-dark)] sm:bottom-8 sm:right-8">
         <span className="text-xl leading-none">+</span>
         Add expense
-      </button>
+      </Link>
 
       <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--border-subtle)] bg-[var(--surface-card)]/95 px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:hidden">
         <div className="mx-auto flex max-w-md items-center justify-around text-[11px] font-bold text-[var(--text-secondary)]">
@@ -123,3 +123,4 @@ export default function Home() {
     </main>
   );
 }
+import Link from "next/link";
