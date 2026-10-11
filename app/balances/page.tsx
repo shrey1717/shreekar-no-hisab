@@ -93,7 +93,7 @@ export default function Balances() {
                   <p className="text-[11px] font-bold text-[var(--text-secondary)]">to Rahul</p>
                 </div>
               </div>
-              <button type="button" className="mt-4 w-full rounded-full bg-[var(--charcoal)] py-3 text-sm font-extrabold text-white transition hover:bg-black">Record repayment</button>
+              <Link href="/settlement-success" className="mt-4 block w-full rounded-full bg-[var(--charcoal)] py-3 text-center text-sm font-extrabold text-white transition hover:bg-black">Record repayment</Link>
             </div>
           </section>
           <section aria-label="Balance guidance" className="rounded-[1.5rem] border border-[var(--border-subtle)] bg-transparent p-5 sm:p-6">

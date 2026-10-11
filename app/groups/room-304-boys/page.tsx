@@ -69,7 +69,7 @@ export default function GroupDetails() {
               </div>
               <div className="mt-5 flex gap-2">
                 <Link href="/add-expense" className="flex-1 rounded-full bg-[var(--primary)] py-3 text-center text-sm font-extrabold text-white shadow-[0_8px_18px_rgba(240,93,72,0.2)]">Add expense</Link>
-                <button type="button" className="rounded-full border border-[var(--border-subtle)] px-4 py-3 text-sm font-extrabold text-[var(--charcoal)]">Invite</button>
+                <Link href="/welcome" className="rounded-full border border-[var(--border-subtle)] px-4 py-3 text-center text-sm font-extrabold text-[var(--charcoal)]">Invite</Link>
               </div>
             </div>
           </section>
