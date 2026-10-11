@@ -4,7 +4,7 @@
 
 ## 1. Product vision
 
-HisabMate helps hostel friends, roommates, and trip groups record shared expenses, calculate who owes whom, track repayments, and share friendly payment reminders.
+PaisaNakhne helps hostel friends, roommates, and trip groups record shared expenses, calculate who owes whom, track repayments, and share friendly payment reminders.
 
 The first deliverable is a **website**, not a mobile app. The website should work well on both laptop and mobile browsers.
 

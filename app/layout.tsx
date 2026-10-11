@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "HisabMate",
+  title: "PaisaNakhne",
   description: "A friendly shared expense tracker for hostel groups and roommates.",
 };
 

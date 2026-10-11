@@ -1,6 +1,6 @@
-# HisabMate
+# PaisaNakhne
 
-HisabMate is a warm, simple shared-expense tracker for hostel friends,
+PaisaNakhne is a warm, simple shared-expense tracker for hostel friends,
 roommates, and trip groups. The website is being built with Next.js and
 TypeScript using the product scope in
 [`HisabMate_Website_First_Architecture_Plan.md`](./HisabMate_Website_First_Architecture_Plan.md).

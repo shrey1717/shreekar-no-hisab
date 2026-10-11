@@ -6,7 +6,7 @@ export default function Home() {
           ₹
         </div>
         <p className="mb-3 text-xs font-bold uppercase tracking-[0.16em] text-[var(--primary)]">
-          HisabMate
+          PaisaNakhne
         </p>
         <h1 className="text-3xl font-extrabold tracking-[-0.03em] text-[var(--charcoal)] sm:text-4xl">
           Shared expenses, minus the awkwardness.
