@@ -3,16 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 
-const people = [
-  { initials: "SV", name: "You", color: "bg-[var(--primary)] text-white" },
-  { initials: "RV", name: "Rahul", color: "bg-[#d9e7df] text-[#30644c]" },
-  { initials: "AK", name: "Aman", color: "bg-[#f8dfb5] text-[#805d24]" },
-  { initials: "PK", name: "Prakash", color: "bg-[#dedcf0] text-[#5a537e]" },
-];
+const people: { initials: string; name: string; color: string }[] = [];
 
 export default function AddExpense() {
   const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal");
-  const [participants, setParticipants] = useState(["SV", "RV", "AK"]);
+  const [participants, setParticipants] = useState<string[]>([]);
 
   function toggleParticipant(initials: string) {
     setParticipants((current) =>
@@ -36,12 +31,12 @@ export default function AddExpense() {
           <div>
             <p className="text-lg font-extrabold tracking-tight">Add expense</p>
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
-              Room 304 Boys
+              Your group
             </p>
           </div>
         </div>
         <div className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">
-          SV
+          ?
         </div>
       </header>
 
@@ -85,7 +80,8 @@ export default function AddExpense() {
             <label className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]" htmlFor="payer">
               Paid by
             </label>
-            <select id="payer" defaultValue="SV" className="mt-3 w-full appearance-none rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-bold text-[var(--charcoal)] outline-none focus:border-[var(--primary)]">
+            <select id="payer" defaultValue="" className="mt-3 w-full appearance-none rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-bold text-[var(--charcoal)] outline-none focus:border-[var(--primary)]">
+              <option value="" disabled>Add a person first</option>
               {people.map((person) => <option key={person.initials} value={person.initials}>{person.name}</option>)}
             </select>
           </section>
@@ -100,7 +96,7 @@ export default function AddExpense() {
                 {participants.length} people
               </span>
             </div>
-            <div className="mt-5 grid grid-cols-4 gap-2">
+            {people.length === 0 ? <p className="mt-5 rounded-xl bg-[var(--surface-cream)] p-4 text-sm text-[var(--text-secondary)]">No people added yet. Add group members before splitting an expense.</p> : <div className="mt-5 grid grid-cols-4 gap-2">
               {people.map((person) => {
                 const selected = participants.includes(person.initials);
                 return (
@@ -112,7 +108,7 @@ export default function AddExpense() {
                   </button>
                 );
               })}
-            </div>
+            </div>}
           </section>
 
           <section className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-[0_10px_30px_rgba(75,52,45,0.05)] sm:p-6">

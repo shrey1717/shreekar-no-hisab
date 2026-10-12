@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 
-const balances = [
-  { initials: "RV", name: "Rahul Verma", detail: "for dinner & groceries", amount: "₹820", color: "bg-[#d9e7df] text-[#30644c]" },
-  { initials: "AK", name: "Aman Kumar", detail: "for room cleaning", amount: "₹480", color: "bg-[#f8dfb5] text-[#805d24]" },
-  { initials: "PK", name: "Prakash", detail: "for monthly supplies", amount: "₹300", color: "bg-[#dedcf0] text-[#5a537e]" },
-];
+const balances: { initials: string; name: string; detail: string; amount: string; color: string }[] = [];
 
 export default function Balances() {
   const [settled, setSettled] = useState<string[]>([]);
@@ -25,10 +21,10 @@ export default function Balances() {
           <Link href="/" aria-label="Back to dashboard" className="flex size-10 items-center justify-center rounded-full text-xl text-[var(--charcoal)] transition hover:bg-[var(--surface-card)]">←</Link>
           <div>
             <p className="text-lg font-extrabold tracking-tight">Balances</p>
-            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">Room 304 Boys</p>
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">Your group</p>
           </div>
         </div>
-        <div className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">SV</div>
+        <div className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">?</div>
       </header>
 
       <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 sm:px-8 lg:grid-cols-[1.1fr_0.9fr]">
@@ -41,10 +37,10 @@ export default function Balances() {
                 <span className="text-xs font-semibold text-white/50">October</span>
               </div>
               <p id="balance-heading" className="mt-7 text-xs font-bold uppercase tracking-[0.12em] text-white/55">You should receive</p>
-              <p className="mt-2 text-4xl font-extrabold tracking-[-0.04em] sm:text-5xl">₹1,600</p>
+              <p className="mt-2 text-4xl font-extrabold tracking-[-0.04em] sm:text-5xl">₹0</p>
               <div className="mt-7 flex items-center justify-between border-t border-white/10 pt-4 text-sm">
                 <span className="text-white/60">You owe others</span>
-                <span className="font-extrabold text-[var(--primary)]">₹360</span>
+                <span className="font-extrabold text-[var(--primary)]">₹0</span>
               </div>
             </div>
           </section>
@@ -58,6 +54,7 @@ export default function Balances() {
               <span className="rounded-full bg-[var(--status-receive-bg)] px-2.5 py-1 text-xs font-bold text-[var(--status-receive)]">{remaining.length} active · ₹{activeTotal.toLocaleString("en-IN")}</span>
             </div>
             <div className="mt-5 space-y-3">
+              {balances.length === 0 && <p className="rounded-xl bg-[var(--surface-cream)] p-4 text-sm text-[var(--text-secondary)]">No balances yet. Add expenses and people to see who owes whom.</p>}
               {balances.map((person) => {
                 const isSettled = settled.includes(person.initials);
                 return (
@@ -80,21 +77,9 @@ export default function Balances() {
 
         <aside className="space-y-5">
           <section aria-labelledby="suggestion-heading" className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-[0_10px_30px_rgba(75,52,45,0.05)] sm:p-6">
-            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Suggested settle-up</p>
-            <h2 id="suggestion-heading" className="mt-1 text-xl font-extrabold">Keep it simple</h2>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">One payment can clear your biggest outstanding balance.</p>
-            <div className="mt-5 rounded-2xl bg-[var(--accent-yellow-light)] p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex size-10 items-center justify-center rounded-full bg-[var(--primary)] text-xs font-extrabold text-white">SV</div>
-                <span className="text-[var(--text-secondary)]">→</span>
-                <div className="flex size-10 items-center justify-center rounded-full bg-[#d9e7df] text-xs font-extrabold text-[#30644c]">RV</div>
-                <div className="ml-auto text-right">
-                  <p className="text-lg font-extrabold">₹360</p>
-                  <p className="text-[11px] font-bold text-[var(--text-secondary)]">to Rahul</p>
-                </div>
-              </div>
-              <Link href="/settlement-success" className="mt-4 block w-full rounded-full bg-[var(--charcoal)] py-3 text-center text-sm font-extrabold text-white transition hover:bg-black">Record repayment</Link>
-            </div>
+            <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Settle up</p>
+            <h2 id="suggestion-heading" className="mt-1 text-xl font-extrabold">Nothing to settle yet</h2>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Add people and expenses first. Settlement suggestions will appear here when balances exist.</p>
           </section>
           <section aria-label="Balance guidance" className="rounded-[1.5rem] border border-[var(--border-subtle)] bg-transparent p-5 sm:p-6">
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Good to know</p>
