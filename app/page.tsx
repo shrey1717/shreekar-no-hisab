@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AccountWorkspace } from "./account-workspace";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Section = "expenses" | "accounts" | "split";
 type Category = "Food" | "Stationery" | "Travel" | "Shopping" | "Bills";
@@ -11,6 +11,8 @@ type AccountType = "customer" | "supplier";
 type Expense = { id: number; title: string; category: Category; amount: number; date: string; icon: string };
 type AccountEntry = { id: number; amount: number; direction: Direction; date: string };
 type Account = { id: number; name: string; type: AccountType; entries: AccountEntry[] };
+type UserProfile = { name: string; phone: string };
+type Screen = "splash" | "login" | "dashboard";
 
 const categoryStyles: Record<Category, { icon: string; background: string }> = {
   Food: { icon: "🍜", background: "bg-[var(--status-owe-bg)]" },
@@ -28,6 +30,10 @@ function formatDate(date: string) { return new Intl.DateTimeFormat("en-IN", { da
 function accountBalance(account: Account) { return account.entries.reduce((total, entry) => total + (entry.direction === "gave" ? entry.amount : -entry.amount), 0); }
 
 export default function Home() {
+  const [screen, setScreen] = useState<Screen>("splash");
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [loginName, setLoginName] = useState("");
+  const [loginPhone, setLoginPhone] = useState("");
   const [section, setSection] = useState<Section>("expenses");
   const [expenses, setExpenses] = useState(initialExpenses);
   const [month, setMonth] = useState("2026-10");
@@ -50,6 +56,41 @@ export default function Home() {
   const supplierTotal = accounts.filter((account) => account.type === "supplier").reduce((total, account) => total + Math.max(accountBalance(account), 0), 0);
   const groupedExpenses = monthExpenses.reduce<Record<string, Expense[]>>((result, expense) => { (result[expense.date] ??= []).push(expense); return result; }, {});
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const savedUser = window.localStorage.getItem("paisa-nakhne-user");
+      if (savedUser) {
+        try {
+          setUser(JSON.parse(savedUser) as UserProfile);
+          setScreen("dashboard");
+        } catch {
+          window.localStorage.removeItem("paisa-nakhne-user");
+          setScreen("login");
+        }
+      } else {
+        setScreen("login");
+      }
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  function login(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const profile = { name: loginName.trim(), phone: loginPhone.trim() };
+    if (!profile.name || !profile.phone) return;
+    window.localStorage.setItem("paisa-nakhne-user", JSON.stringify(profile));
+    setUser(profile);
+    setScreen("dashboard");
+  }
+
+  function logout() {
+    window.localStorage.removeItem("paisa-nakhne-user");
+    setUser(null);
+    setLoginName("");
+    setLoginPhone("");
+    setScreen("login");
+  }
+
   function addExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const amount = Number(expenseAmount);
     if (!expenseTitle.trim() || !Number.isFinite(amount) || amount <= 0) return;
@@ -71,12 +112,48 @@ export default function Home() {
     setGroups((current) => [...current, { id: Date.now(), name: groupName.trim(), members: 1, total: 0, color: "bg-[#e9e8f7]" }]); setGroupName("");
   }
 
+  if (screen === "splash") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[var(--charcoal)] px-5 text-white">
+        <section className="text-center">
+          <div className="mx-auto flex size-24 items-center justify-center rounded-[2rem] bg-[var(--primary)] text-5xl font-extrabold shadow-[0_18px_40px_rgba(240,93,72,0.3)]">₹</div>
+          <h1 className="mt-6 text-3xl font-extrabold tracking-tight">PaisaNakhne</h1>
+          <p className="mt-2 text-sm text-white/55">Making every rupee clear.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (screen === "login") {
+    return (
+      <main className="min-h-screen bg-[var(--background)] px-5 py-8 sm:flex sm:items-center sm:justify-center">
+        <section className="mx-auto w-full max-w-md">
+          <div className="mb-8 text-center">
+            <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-[var(--primary)] text-3xl font-extrabold text-white shadow-[0_12px_24px_rgba(240,93,72,0.2)]">₹</div>
+            <h1 className="mt-5 text-3xl font-extrabold tracking-tight">Welcome to PaisaNakhne</h1>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Enter your information to create your personal expense dashboard.</p>
+          </div>
+          <form onSubmit={login} className="rounded-[2rem] bg-[var(--surface-card)] p-6 shadow-[0_14px_36px_rgba(75,52,45,0.07)] sm:p-8">
+            <label htmlFor="user-name" className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your name</label>
+            <input id="user-name" required autoFocus value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Enter your name" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
+            <label htmlFor="user-phone" className="mt-5 block text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Mobile number</label>
+            <input id="user-phone" required inputMode="tel" value={loginPhone} onChange={(event) => setLoginPhone(event.target.value)} placeholder="Enter your mobile number" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
+            <button type="submit" className="mt-6 w-full rounded-full bg-[var(--primary)] py-3.5 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(240,93,72,0.24)] transition hover:bg-[var(--primary-dark)]">Enter dashboard</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  const initials = user?.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "?";
+
   return (
     <main className="min-h-screen bg-[var(--background)] pb-10 text-[var(--foreground)]">
       <div className="mx-auto w-full max-w-6xl">
-        <header className="flex h-20 items-center justify-between px-5 sm:px-8"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[var(--primary)] text-xl font-extrabold text-white shadow-[0_8px_16px_rgba(240,93,72,0.2)]">₹</div><div><p className="text-base font-extrabold tracking-tight">PaisaNakhne</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]"><span className="size-1.5 rounded-full bg-[var(--status-receive)]" />Personal workspace</p></div></div><button aria-label="Open profile" className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">SV</button></header>
+        <header className="flex h-20 items-center justify-between px-5 sm:px-8"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[var(--primary)] text-xl font-extrabold text-white shadow-[0_8px_16px_rgba(240,93,72,0.2)]">₹</div><div><p className="text-base font-extrabold tracking-tight">PaisaNakhne</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]"><span className="size-1.5 rounded-full bg-[var(--status-receive)]" />Personal workspace</p></div></div><button type="button" onClick={logout} aria-label={`Log out ${user?.name}`} className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">{initials}</button></header>
         <div className="px-5 sm:px-8">
           <div className="mb-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-1.5 shadow-sm"><nav aria-label="Workspace sections" className="grid grid-cols-3 gap-1">{([["expenses", "Expenses", "◫"], ["accounts", "Accounts", "◎"], ["split", "Split", "⊕"]] as const).map(([value, label, icon]) => <button key={value} type="button" onClick={() => setSection(value)} className={`rounded-xl px-2 py-3 text-center text-xs font-extrabold transition sm:text-sm ${section === value ? "bg-[var(--charcoal)] text-white shadow-sm" : "text-[var(--text-secondary)] hover:bg-[var(--surface-cream)]"}`}><span className="mr-1.5 text-base">{icon}</span>{label}</button>)}</nav></div>
+          <section className="mb-6 rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your dashboard</p><h1 className="mt-1 text-2xl font-extrabold">Welcome, {user?.name}!</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Logged in with {user?.phone}. Add your first expense or account to get started.</p></section>
 
           {section === "expenses" && <section aria-labelledby="expenses-heading" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Monthly expense overview</p><h1 id="expenses-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">{formatMoney(monthTotal)}</h1><p className="mt-2 text-sm text-white/55">{monthExpenses.length} expenses recorded</p></div><select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Choose expense month" className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white outline-none"><option className="text-black" value="2026-10">October 2026</option><option className="text-black" value="2026-09">September 2026</option></select></div></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-[0_10px_30px_rgba(75,52,45,0.05)] sm:p-6"><div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Daily ledger</p><h2 className="mt-1 text-xl font-extrabold">Expenses by day</h2></div><button type="button" onClick={() => setShowExpenseForm((current) => !current)} className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-extrabold text-white">+ Add</button></div>{showExpenseForm && <form onSubmit={addExpense} className="mb-5 rounded-2xl bg-[var(--surface-cream)] p-4"><div className="grid gap-3 sm:grid-cols-2"><input required value={expenseTitle} onChange={(event) => setExpenseTitle(event.target.value)} placeholder="Expense title" className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm outline-none" /><input required min="1" type="number" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} placeholder="Amount ₹" className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm outline-none" /><select value={expenseCategory} onChange={(event) => setExpenseCategory(event.target.value as Category)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm font-semibold"><option>Food</option><option>Stationery</option><option>Travel</option><option>Shopping</option><option>Bills</option></select><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm font-semibold" /></div><button className="mt-3 w-full rounded-xl bg-[var(--charcoal)] py-3 text-sm font-extrabold text-white">Save expense</button></form>}{monthExpenses.length === 0 && !showExpenseForm ? <p className="rounded-xl bg-[var(--surface-cream)] p-4 text-sm text-[var(--text-secondary)]">No expenses yet. Add your first expense above.</p> : <div className="space-y-5">{Object.entries(groupedExpenses).map(([date, items]) => <div key={date}><p className="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">{formatDate(date)} · {items.length} entries</p><div className="space-y-2">{items.map((expense) => <div key={expense.id} className="flex items-center gap-3 rounded-2xl border border-[var(--border-subtle)] p-3"><div className={`flex size-11 items-center justify-center rounded-xl text-lg ${categoryStyles[expense.category].background}`}>{expense.icon}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{expense.title}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{expense.category}</p></div><p className="text-sm font-extrabold">{formatMoney(expense.amount)}</p></div>)}</div></div>)}</div>}</div></div><aside className="hidden space-y-5 lg:block"><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-6 shadow-sm"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Quick actions</p><h2 className="mt-1 text-xl font-extrabold">Stay on top of spending</h2>{(["Food", "Stationery", "Travel", "Shopping"] as Category[]).map((category) => <div className="mt-4 flex items-center gap-3" key={category}><span className={`flex size-9 items-center justify-center rounded-xl ${categoryStyles[category].background}`}>{categoryStyles[category].icon}</span><span className="flex-1 text-sm font-bold">{category}</span><span className="text-sm font-extrabold">{formatMoney(monthExpenses.filter((item) => item.category === category).reduce((sum, item) => sum + item.amount, 0))}</span></div>)}</div><Link href="/groups/room-304-boys" className="block rounded-[1.5rem] bg-[var(--accent-yellow-light)] p-5"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Shared expenses</p><p className="mt-1 text-lg font-extrabold">Room 304 Boys</p><p className="mt-2 text-sm text-[var(--text-secondary)]">View group activity →</p></Link></aside></section>}
 
