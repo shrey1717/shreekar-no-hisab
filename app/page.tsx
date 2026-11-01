@@ -207,8 +207,14 @@ export default function Home() {
         userinfo_failed: "Google account details could not be loaded.",
         invalid_google_profile: "Google returned an incomplete account profile.",
         oauth_error: "Google sign-in failed. Please try again.",
+        oauth_server_error: "The server could not finish Google sign-in. Check that PostgreSQL is running.",
+        google_access_denied: "Google sign-in was cancelled.",
       };
-      const errorMessage = messages[callbackError] || "Google sign-in could not be completed.";
+      const errorMessage =
+        messages[callbackError] ||
+        (callbackError.startsWith("google_token_")
+          ? `Google rejected the sign-in request (${callbackError.replace("google_token_", "")}). Check the OAuth redirect URI and client settings.`
+          : "Google sign-in could not be completed.");
       const errorTimer = window.setTimeout(() => setAuthError(errorMessage), 0);
       window.history.replaceState({}, "", window.location.pathname);
       if (!isMounted) window.clearTimeout(errorTimer);

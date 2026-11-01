@@ -16,7 +16,12 @@ export async function GET(request: Request) {
   await connection();
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
+  const providerError = url.searchParams.get("error");
   const origin = url.origin;
+
+  if (providerError) {
+    return Response.redirect(`${origin}/?error=google_${encodeURIComponent(providerError)}`);
+  }
 
   if (!code) {
     return Response.redirect(`${origin}/?error=no_code`);
@@ -43,11 +48,18 @@ export async function GET(request: Request) {
       }),
     });
 
+    const tokenPayload = (await tokenRes.json()) as GoogleTokenResponse & {
+      error?: string;
+      error_description?: string;
+    };
     if (!tokenRes.ok) {
-      return Response.redirect(`${origin}/?error=token_exchange_failed`);
+      console.error("Google token exchange failed:", tokenPayload.error);
+      return Response.redirect(
+        `${origin}/?error=google_token_${encodeURIComponent(tokenPayload.error || "failed")}`,
+      );
     }
 
-    const tokenData = (await tokenRes.json()) as GoogleTokenResponse;
+    const tokenData = tokenPayload;
     if (!tokenData.access_token) {
       return Response.redirect(`${origin}/?error=missing_access_token`);
     }
@@ -56,6 +68,7 @@ export async function GET(request: Request) {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     if (!userInfoRes.ok) {
+      console.error("Google userinfo request failed:", userInfoRes.status);
       return Response.redirect(`${origin}/?error=userinfo_failed`);
     }
 
@@ -76,6 +89,6 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     console.error("Google OAuth error:", error);
-    return Response.redirect(`${origin}/?error=oauth_error`);
+    return Response.redirect(`${origin}/?error=oauth_server_error`);
   }
 }
