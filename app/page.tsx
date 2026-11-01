@@ -198,6 +198,21 @@ export default function Home() {
   // Check auth on startup (session persistence - only asks to login first time)
   useEffect(() => {
     let isMounted = true;
+    const callbackError = new URLSearchParams(window.location.search).get("error");
+    if (callbackError) {
+      const messages: Record<string, string> = {
+        google_credentials_missing: "Google sign-in is not configured on this server.",
+        token_exchange_failed: "Google sign-in could not be completed.",
+        missing_access_token: "Google did not return an access token.",
+        userinfo_failed: "Google account details could not be loaded.",
+        invalid_google_profile: "Google returned an incomplete account profile.",
+        oauth_error: "Google sign-in failed. Please try again.",
+      };
+      const errorMessage = messages[callbackError] || "Google sign-in could not be completed.";
+      const errorTimer = window.setTimeout(() => setAuthError(errorMessage), 0);
+      window.history.replaceState({}, "", window.location.pathname);
+      if (!isMounted) window.clearTimeout(errorTimer);
+    }
     apiRequest<{ user: UserProfile | null }>("/api/auth/me")
       .then((res) => {
         if (!isMounted) return;

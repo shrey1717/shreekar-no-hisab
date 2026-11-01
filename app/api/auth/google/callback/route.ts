@@ -1,6 +1,17 @@
 import { connection } from "next/server";
 import { buildSessionCookieHeader, createSession, findOrCreateGoogleUser } from "@/src/lib/auth";
 
+type GoogleTokenResponse = {
+  access_token?: string;
+};
+
+type GoogleProfile = {
+  email?: string;
+  name?: string;
+  sub?: string;
+  picture?: string;
+};
+
 export async function GET(request: Request) {
   await connection();
   const url = new URL(request.url);
@@ -11,7 +22,7 @@ export async function GET(request: Request) {
     return Response.redirect(`${origin}/?error=no_code`);
   }
 
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = `${origin}/api/auth/google/callback`;
 
@@ -36,23 +47,29 @@ export async function GET(request: Request) {
       return Response.redirect(`${origin}/?error=token_exchange_failed`);
     }
 
-    const tokenData = await tokenRes.json();
+    const tokenData = (await tokenRes.json()) as GoogleTokenResponse;
+    if (!tokenData.access_token) {
+      return Response.redirect(`${origin}/?error=missing_access_token`);
+    }
+
     const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
-
     if (!userInfoRes.ok) {
       return Response.redirect(`${origin}/?error=userinfo_failed`);
     }
 
-    const profile = await userInfoRes.json();
+    const profile = (await userInfoRes.json()) as GoogleProfile;
+    if (!profile.email || !profile.sub) {
+      return Response.redirect(`${origin}/?error=invalid_google_profile`);
+    }
+
     const user = await findOrCreateGoogleUser({
       email: profile.email,
       name: profile.name || profile.email.split("@")[0],
       googleId: profile.sub,
       avatarUrl: profile.picture,
     });
-
     const sessionToken = await createSession(user.id);
     const response = Response.redirect(`${origin}/`);
     response.headers.set("Set-Cookie", buildSessionCookieHeader(sessionToken));
