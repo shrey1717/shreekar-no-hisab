@@ -49,7 +49,6 @@ function AddExpenseForm() {
 
   useEffect(() => {
     if (!groupId) return;
-    setLoading(true);
     apiRequest<{ members: Member[] }>(`/api/groups/${groupId}/members`)
       .then((response) => {
         setMembers(response.members);

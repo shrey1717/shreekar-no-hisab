@@ -84,8 +84,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) return;
-    setGroupsLoading(true);
-    setGroupsError("");
     apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>("/api/groups")
       .then((response) => {
         setGroups(response.groups.map((group) => ({

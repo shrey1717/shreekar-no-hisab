@@ -12,6 +12,8 @@ type Suggestion = { fromUserId: string; fromName: string; toUserId: string; toNa
 const colors = ["bg-[#e9e8f7]", "bg-[#f8e4d7]", "bg-[#dcefe8]", "bg-[#f4e3b2]"];
 const money = (minor: string) => `₹${(Number(minor) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const initials = (name: string) => name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase();
+const fetchBalances = (groupId: string) =>
+  apiRequest<{ balances: Balance[]; settlementSuggestions: Suggestion[] }>(`/api/groups/${groupId}/balances`);
 
 function BalancesContent() {
   const router = useRouter();
@@ -26,21 +28,6 @@ function BalancesContent() {
   const [action, setAction] = useState("");
   const [error, setError] = useState("");
 
-  async function loadBalances(id: string) {
-    if (!id) return;
-    setLoading(true);
-    setError("");
-    try {
-      const response = await apiRequest<{ balances: Balance[]; settlementSuggestions: Suggestion[] }>(`/api/groups/${id}/balances`);
-      setBalances(response.balances);
-      setSuggestions(response.settlementSuggestions);
-    } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "Could not load balances.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   useEffect(() => {
     Promise.all([
       apiRequest<{ groups: Group[] }>("/api/groups"),
@@ -53,12 +40,19 @@ function BalancesContent() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { void loadBalances(groupId); }, [groupId]);
+  useEffect(() => {
+    if (!groupId) return;
+    fetchBalances(groupId)
+      .then((response) => {
+        setBalances(response.balances);
+        setSuggestions(response.settlementSuggestions);
+      })
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Could not load balances."))
+      .finally(() => setLoading(false));
+  }, [groupId]);
 
   const selectedGroup = groups.find((group) => group.id === groupId);
   const ownBalance = balances.find((balance) => balance.userId === currentUserId);
-  const receiving = balances.filter((balance) => Number(balance.netMinor) > 0);
-  const owing = balances.filter((balance) => Number(balance.netMinor) < 0);
   const relevantSuggestions = suggestions.filter((suggestion) => suggestion.fromUserId === currentUserId || suggestion.toUserId === currentUserId);
 
   async function recordSettlement(suggestion: Suggestion) {
@@ -75,7 +69,9 @@ function BalancesContent() {
         }),
       });
       await apiRequest(`/api/groups/${groupId}/settlements/${response.settlement.id}/confirm`, { method: "POST" });
-      await loadBalances(groupId);
+      const balancesResponse = await fetchBalances(groupId);
+      setBalances(balancesResponse.balances);
+      setSuggestions(balancesResponse.settlementSuggestions);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "Could not record settlement.");
     } finally {

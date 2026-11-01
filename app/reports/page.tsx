@@ -31,7 +31,6 @@ function ReportsContent() {
 
   useEffect(() => {
     if (!groupId) return;
-    setLoading(true);
     Promise.all([
       apiRequest<{ summary: Summary }>(`/api/groups/${groupId}/reports/summary`),
       apiRequest<{ categories: Category[] }>(`/api/groups/${groupId}/reports/categories`),

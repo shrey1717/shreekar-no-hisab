@@ -38,8 +38,6 @@ function GroupDetailsContent() {
 
   useEffect(() => {
     if (!groupId) return;
-    setLoading(true);
-    setError("");
     Promise.all([
       apiRequest<{ group: Group }>(`/api/groups/${groupId}`),
       apiRequest<{ members: Member[] }>(`/api/groups/${groupId}/members`),
