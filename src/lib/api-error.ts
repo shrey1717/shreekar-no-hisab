@@ -25,11 +25,14 @@ export function errorResponse(error: unknown): Response {
   }
 
   console.error("Unhandled API error:", error);
+  const message =
+    error instanceof Error ? error.message : "An unexpected error occurred.";
+
   return Response.json(
     {
       error: {
         code: "INTERNAL_SERVER_ERROR",
-        message: "An unexpected error occurred.",
+        message: message || "An unexpected error occurred.",
       },
     },
     { status: 500 },

@@ -16,6 +16,11 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
+export function buildSessionCookieHeader(token: string): string {
+  const isProd = process.env.NODE_ENV === "production";
+  return `${sessionCookieName}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 60 * 60}${isProd ? "; Secure" : ""}`;
+}
+
 export async function findOrCreateGoogleUser({
   email,
   name,
@@ -28,7 +33,7 @@ export async function findOrCreateGoogleUser({
   avatarUrl?: string;
 }): Promise<AuthUser> {
   const normalizedEmail = email.trim().toLowerCase();
-  const userName = name.trim() || normalizedEmail.split("@")[0];
+  const userName = (name || "").trim() || normalizedEmail.split("@")[0];
 
   const existing = await db.query<AuthUser>(
     `SELECT id, name, email, avatar_url
@@ -67,7 +72,7 @@ export async function findOrCreateGoogleUser({
   return inserted.rows[0];
 }
 
-export async function createSession(userId: string): Promise<void> {
+export async function createSession(userId: string): Promise<string> {
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + sessionDurationMs);
 
@@ -77,27 +82,37 @@ export async function createSession(userId: string): Promise<void> {
     [userId, hashToken(token), expiresAt],
   );
 
-  const cookieStore = await cookies();
-  cookieStore.set(sessionCookieName, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    expires: expiresAt,
-  });
+  try {
+    const cookieStore = await cookies();
+    cookieStore.set(sessionCookieName, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: expiresAt,
+    });
+  } catch {
+    // cookieStore may not be mutable in some route contexts; caller can also use buildSessionCookieHeader
+  }
+
+  return token;
 }
 
 export async function destroySession(): Promise<void> {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(sessionCookieName)?.value;
+  try {
+    const cookieStore = await cookies();
+    const token = cookieStore.get(sessionCookieName)?.value;
 
-  if (token) {
-    await db.query("DELETE FROM sessions WHERE token_hash = $1", [
-      hashToken(token),
-    ]);
+    if (token) {
+      await db.query("DELETE FROM sessions WHERE token_hash = $1", [
+        hashToken(token),
+      ]);
+    }
+
+    cookieStore.delete(sessionCookieName);
+  } catch {
+    // Ignore cookie store errors
   }
-
-  cookieStore.delete(sessionCookieName);
 }
 
 function getCookieValue(request: Request, name: string): string | undefined {

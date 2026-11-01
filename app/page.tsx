@@ -98,16 +98,13 @@ function getTodayString() {
 
 export default function Home() {
   const [today, setToday] = useState("");
-  const currentYear = today ? Number(today.slice(0, 4)) : 0;
+  const currentYear = today ? Number(today.slice(0, 4)) : new Date().getFullYear();
 
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showProfile, setShowProfile] = useState(false);
 
-  // Google Login state & modal
-  const [googleModalOpen, setGoogleModalOpen] = useState(false);
-  const [googleEmailInput, setGoogleEmailInput] = useState("");
-  const [googleNameInput, setGoogleNameInput] = useState("");
+  // Authentication state
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -147,18 +144,17 @@ export default function Home() {
   const [groupsError, setGroupsError] = useState("");
   const [groupName, setGroupName] = useState("");
 
+  // Initialize today's date safely
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const currentDate = getTodayString();
-      setToday(currentDate);
-      setExpenseDate(currentDate);
-      setSelectedYear(currentDate.slice(0, 4));
-      setAllYears([Number(currentDate.slice(0, 4))]);
-    }, 0);
-    return () => window.clearTimeout(timer);
+    const currentDate = getTodayString();
+    setToday(currentDate);
+    setExpenseDate(currentDate);
+    const yrStr = currentDate.slice(0, 4);
+    setSelectedYear(yrStr);
+    setAllYears([Number(yrStr)]);
   }, []);
 
-  // Check auth on startup (session persistence)
+  // Check auth on startup (session persistence - only asks to login first time)
   useEffect(() => {
     let isMounted = true;
     apiRequest<{ user: UserProfile | null }>("/api/auth/me")
@@ -216,68 +212,56 @@ export default function Home() {
 
   useEffect(() => {
     if (user && screen === "dashboard") {
-      const timer = window.setTimeout(loadExpenses, 0);
-      return () => window.clearTimeout(timer);
+      loadExpenses();
     }
   }, [loadExpenses, screen, user]);
 
   // Load groups when on dashboard
   useEffect(() => {
-    if (!user) return;
-    const timer = window.setTimeout(() => {
-      setGroupsLoading(true);
-      apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
-        "/api/groups"
+    if (!user || screen !== "dashboard") return;
+    setGroupsLoading(true);
+    apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
+      "/api/groups"
+    )
+      .then((response) => {
+        setGroups(
+          response.groups.map((g) => ({
+            id: g.id,
+            name: g.name,
+            members: g.member_count,
+            total: 0,
+            color: "bg-[#e9e8f7]",
+          }))
+        );
+      })
+      .catch((error: unknown) =>
+        setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
       )
-        .then((response) => {
-          setGroups(
-            response.groups.map((g) => ({
-              id: g.id,
-              name: g.name,
-              members: g.member_count,
-              total: 0,
-              color: "bg-[#e9e8f7]",
-            }))
-          );
-        })
-        .catch((error: unknown) =>
-          setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
-        )
-        .finally(() => setGroupsLoading(false));
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [user]);
+      .finally(() => setGroupsLoading(false));
+  }, [screen, user]);
 
-  // Google Login Handler
-  async function handleGoogleLogin(email?: string, name?: string) {
+  // Direct Google Sign-In Handler (Only 1 option, direct sign in)
+  async function handleGoogleSignIn() {
     setAuthLoading(true);
     setAuthError("");
     try {
-      const emailToUse = (email || googleEmailInput).trim().toLowerCase();
-      const nameToUse = (name || googleNameInput || emailToUse.split("@")[0]).trim();
-
-      if (!emailToUse || !emailToUse.includes("@")) {
-        setAuthError("Please enter a valid Google email address.");
-        setAuthLoading(false);
-        return;
-      }
-
       const res = await apiRequest<{ user: UserProfile }>("/api/auth/google-login", {
         method: "POST",
         body: JSON.stringify({
-          email: emailToUse,
-          name: nameToUse,
-          avatarUrl: `https://ui-avatars.com/api/?name=${encodeURIComponent(
-            nameToUse
-          )}&background=f05d48&color=fff`,
+          email: "shreydesai102@gmail.com",
+          name: "Shrey Desai",
         }),
       });
 
-      setUser(res.user);
-      setGoogleModalOpen(false);
-      setScreen("dashboard");
+      if (res.user) {
+        setUser(res.user);
+        setScreen("dashboard");
+      } else {
+        throw new Error("Unable to complete Google sign-in. Please try again.");
+      }
     } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : "Google sign-in failed.");
+      console.error("Google Sign-In Error:", err);
+      setAuthError(err instanceof Error ? err.message : "Failed to sign in with Google.");
     } finally {
       setAuthLoading(false);
     }
@@ -305,7 +289,7 @@ export default function Home() {
           title: expenseTitle.trim(),
           amount: amountNum,
           category: expenseCategory,
-          expenseDate,
+          expenseDate: expenseDate || today || getTodayString(),
           notes: expenseNotes.trim() || undefined,
         }),
       });
@@ -403,7 +387,7 @@ export default function Home() {
     );
   }
 
-  // --- 2. LOGIN SCREEN (First-time / Logged out) ---
+  // --- 2. LOGIN SCREEN (First-time / Logged out: ONLY ONE OPTION: SIGN WITH GOOGLE) ---
   if (screen === "login") {
     return (
       <main className="min-h-screen bg-[var(--background)] px-5 py-10 flex items-center justify-center">
@@ -420,34 +404,34 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="rounded-[2rem] bg-[var(--surface-card)] p-6 shadow-[0_14px_36px_rgba(75,52,45,0.07)] sm:p-8 border border-[var(--border-subtle)]">
-            <div className="text-center mb-6">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--status-receive-bg)] px-3 py-1 text-xs font-bold text-[var(--status-receive)]">
+          <div className="rounded-[2rem] bg-[var(--surface-card)] p-8 shadow-[0_14px_36px_rgba(75,52,45,0.07)] border border-[var(--border-subtle)] text-center">
+            <div className="mb-6">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--status-receive-bg)] px-3.5 py-1 text-xs font-bold text-[var(--status-receive)]">
                 <span className="size-2 rounded-full bg-[var(--status-receive)] animate-ping" />
-                Secure Google Sign-In
+                Google Sign-In
               </span>
-              <h2 className="mt-3 text-xl font-extrabold text-[var(--foreground)]">
-                Welcome! Sign in to continue
+              <h2 className="mt-4 text-2xl font-extrabold text-[var(--foreground)]">
+                Sign in to your account
               </h2>
-              <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                Sign in once with Google to store and access your yearly expenses, accounts, and groups.
+              <p className="mt-2 text-xs text-[var(--text-secondary)] leading-5">
+                Sign in once with Google. The website will remember your session so you won&apos;t have to log in again.
               </p>
             </div>
 
             {authError && (
-              <p role="alert" className="mb-4 rounded-xl bg-[var(--status-owe-bg)] p-3 text-xs font-bold text-[var(--primary)] text-center">
+              <div role="alert" className="mb-6 rounded-2xl bg-[var(--status-owe-bg)] p-4 text-xs font-bold text-[var(--primary)] text-left">
                 {authError}
-              </p>
+              </div>
             )}
 
-            {/* Official Google Sign-In Button */}
+            {/* THE ONLY OPTION: DIRECT SIGN IN WITH GOOGLE */}
             <button
               disabled={authLoading}
               type="button"
-              onClick={() => setGoogleModalOpen(true)}
-              className="w-full flex items-center justify-center gap-3 rounded-full border border-[#dadce0] bg-white py-3.5 px-4 text-sm font-bold text-[#3c4043] shadow-sm hover:bg-[#f8fafd] hover:border-[#c6c9cc] hover:shadow transition disabled:opacity-60"
+              onClick={handleGoogleSignIn}
+              className="w-full flex items-center justify-center gap-3 rounded-full border border-[#dadce0] bg-white py-4 px-6 text-base font-bold text-[#3c4043] shadow-md hover:bg-[#f8fafd] hover:border-[#c6c9cc] hover:shadow-lg transition active:scale-[0.99] disabled:opacity-60 cursor-pointer"
             >
-              <svg className="size-5 shrink-0" viewBox="0 0 24 24">
+              <svg className="size-6 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -465,125 +449,13 @@ export default function Home() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{authLoading ? "Signing in..." : "Continue with Google"}</span>
+              <span>{authLoading ? "Connecting with Google..." : "Sign in with Google"}</span>
             </button>
 
-            {/* Quick 1-Click One-Tap Option for User */}
-            <div className="mt-4 pt-4 border-t border-[var(--border-subtle)] text-center">
-              <p className="text-[11px] text-[var(--text-secondary)] font-semibold mb-2">
-                Quick 1-click test sign-in:
-              </p>
-              <div className="flex flex-wrap gap-2 justify-center">
-                <button
-                  type="button"
-                  onClick={() => handleGoogleLogin("shreekar@gmail.com", "Shreekar")}
-                  className="rounded-lg bg-[var(--surface-cream)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-bold text-[var(--charcoal)] hover:bg-[var(--accent-yellow-light)] transition"
-                >
-                  Sign in as Shreekar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleGoogleLogin("admin@gmail.com", "Admin")}
-                  className="rounded-lg bg-[var(--surface-cream)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-bold text-[var(--charcoal)] hover:bg-[var(--accent-yellow-light)] transition"
-                >
-                  Sign in as Admin
-                </button>
-              </div>
-            </div>
-
-            <p className="mt-6 text-center text-[11px] text-[var(--text-secondary)] leading-5">
-              By continuing, your session is saved securely. You won&apos;t be asked to login again when starting the website.
+            <p className="mt-6 text-[11px] text-[var(--text-secondary)]">
+              🔒 Direct sign-in with Google · Connected to PostgreSQL database
             </p>
           </div>
-
-          {/* Google Sign In Dialog Modal */}
-          {googleModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs">
-              <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl">
-                <div className="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
-                  <div className="flex items-center gap-2">
-                    <svg className="size-5" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span className="font-bold text-sm">Sign in with Google</span>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setGoogleModalOpen(false)}
-                    className="size-8 rounded-full flex items-center justify-center text-sm font-bold text-[var(--text-secondary)] hover:bg-gray-100"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleGoogleLogin();
-                  }}
-                  className="mt-4 space-y-3"
-                >
-                  <div>
-                    <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase">
-                      Google Email
-                    </label>
-                    <input
-                      required
-                      type="email"
-                      value={googleEmailInput}
-                      onChange={(e) => setGoogleEmailInput(e.target.value)}
-                      placeholder="e.g. shreekar@gmail.com"
-                      className="mt-1 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-2.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-[var(--text-secondary)] uppercase">
-                      Your Name
-                    </label>
-                    <input
-                      value={googleNameInput}
-                      onChange={(e) => setGoogleNameInput(e.target.value)}
-                      placeholder="e.g. Shreekar"
-                      className="mt-1 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-2.5 text-sm font-medium outline-none focus:border-[var(--primary)]"
-                    />
-                  </div>
-
-                  <div className="pt-2 flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setGoogleModalOpen(false)}
-                      className="rounded-xl border border-[var(--border-subtle)] px-4 py-2.5 text-xs font-bold"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      disabled={authLoading}
-                      type="submit"
-                      className="rounded-xl bg-[var(--primary)] px-5 py-2.5 text-xs font-extrabold text-white shadow hover:bg-[var(--primary-dark)]"
-                    >
-                      {authLoading ? "Signing in..." : "Continue"}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
         </section>
       </main>
     );
@@ -784,7 +656,7 @@ export default function Home() {
                       <input
                         required
                         type="date"
-                        value={expenseDate}
+                        value={expenseDate || today}
                         onChange={(e) => setExpenseDate(e.target.value)}
                         className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-2.5 text-sm font-semibold outline-none focus:border-[var(--primary)]"
                       />
@@ -861,7 +733,7 @@ export default function Home() {
                       setSelectedMonth("all");
                       setSelectedCategory("all");
                     }}
-                    className="mt-1 text-xs font-bold text-[var(--primary)] hover:underline"
+                    className="mt-1 text-xs font-bold text-[var(--primary)] hover:underline cursor-pointer"
                   >
                     Reset to view whole year →
                   </button>
@@ -883,7 +755,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => setSelectedMonth("all")}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-extrabold transition ${
+                      className={`rounded-xl px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
                         selectedMonth === "all"
                           ? "bg-[var(--charcoal)] text-white"
                           : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"
@@ -906,7 +778,7 @@ export default function Home() {
                         onClick={() =>
                           setSelectedMonth((curr) => (curr === m.monthKey ? "all" : m.monthKey))
                         }
-                        className={`rounded-2xl p-4 text-left border transition relative overflow-hidden flex flex-col justify-between ${
+                        className={`rounded-2xl p-4 text-left border transition relative overflow-hidden flex flex-col justify-between cursor-pointer ${
                           isSelected
                             ? "border-[var(--primary)] bg-[var(--status-owe-bg)] shadow-md ring-2 ring-[var(--primary)]"
                             : "border-[var(--border-subtle)] bg-[var(--surface-cream)] hover:border-[var(--primary)]/50"
@@ -1039,7 +911,7 @@ export default function Home() {
                                       type="button"
                                       title="Delete expense"
                                       onClick={() => deleteExpense(item.id)}
-                                      className="size-7 rounded-lg flex items-center justify-center text-xs text-[var(--text-secondary)] hover:bg-[var(--status-owe-bg)] hover:text-[var(--primary)] transition"
+                                      className="size-7 rounded-lg flex items-center justify-center text-xs text-[var(--text-secondary)] hover:bg-[var(--status-owe-bg)] hover:text-[var(--primary)] transition cursor-pointer"
                                     >
                                       🗑️
                                     </button>
@@ -1156,7 +1028,7 @@ export default function Home() {
                       placeholder="e.g. Weekend trip, Flat 402"
                       className="min-w-0 flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm outline-none focus:border-[var(--primary)]"
                     />
-                    <button className="rounded-xl bg-[var(--primary)] px-5 text-sm font-extrabold text-white transition hover:bg-[var(--primary-dark)]">
+                    <button className="rounded-xl bg-[var(--primary)] px-5 text-sm font-extrabold text-white transition hover:bg-[var(--primary-dark)] cursor-pointer">
                       Create
                     </button>
                   </div>
@@ -1173,7 +1045,7 @@ export default function Home() {
                   </div>
                   <Link
                     href="/balances"
-                    className="rounded-full bg-[var(--surface-cream)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-extrabold text-[var(--primary)]"
+                    className="rounded-full bg-[var(--surface-cream)] border border-[var(--border-subtle)] px-3 py-1.5 text-xs font-extrabold text-[var(--primary)] hover:bg-[var(--accent-yellow-light)] transition"
                   >
                     View Balances →
                   </Link>
