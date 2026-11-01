@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { apiRequest } from "@/src/lib/api-client";
 
 type Direction = "gave" | "got";
@@ -63,21 +63,25 @@ export function AccountWorkspace({
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
-  const [entryDate, setEntryDate] = useState(getToday());
+  const [entryDate, setEntryDate] = useState("");
   const [direction, setDirection] = useState<Direction>("gave");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const syncAccounts = (newAccounts: Account[]) => {
+  useEffect(() => {
+    const timer = window.setTimeout(() => setEntryDate(getToday()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const syncAccounts = useCallback((newAccounts: Account[]) => {
     setLocalAccounts(newAccounts);
     if (setParentAccounts) {
       setParentAccounts(newAccounts);
     }
-  };
+  }, [setParentAccounts]);
 
   useEffect(() => {
-    setLoading(true);
     apiRequest<{ accounts: Account[] }>("/api/accounts")
       .then((res) => {
         syncAccounts(res.accounts || []);
@@ -86,7 +90,7 @@ export function AccountWorkspace({
         console.warn("Could not load accounts from DB:", err);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [syncAccounts]);
 
   const people = accounts.filter((account) => account.type === accountType);
   const selected = accounts.find(

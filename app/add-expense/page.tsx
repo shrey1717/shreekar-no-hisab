@@ -32,10 +32,15 @@ function AddExpenseForm() {
   const [splitMode, setSplitMode] = useState<"equal" | "custom">("equal");
   const [amount, setAmount] = useState("");
   const [title, setTitle] = useState("");
-  const [expenseDate, setExpenseDate] = useState(today);
+  const [expenseDate, setExpenseDate] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setExpenseDate(today()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     apiRequest<{ groups: Array<{ id: string; name: string }> }>("/api/groups")

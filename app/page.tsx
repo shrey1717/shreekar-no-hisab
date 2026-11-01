@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AccountWorkspace } from "./account-workspace";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/src/lib/api-client";
 
 type Section = "expenses" | "accounts" | "split";
@@ -97,9 +97,8 @@ function getTodayString() {
 }
 
 export default function Home() {
-  const currentYear = new Date().getFullYear();
-  const currentMonthNum = new Date().getMonth() + 1;
-  const currentMonthKey = `${currentYear}-${String(currentMonthNum).padStart(2, "0")}`;
+  const [today, setToday] = useState("");
+  const currentYear = today ? Number(today.slice(0, 4)) : 0;
 
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -138,7 +137,7 @@ export default function Home() {
   const [expenseTitle, setExpenseTitle] = useState("");
   const [expenseAmount, setExpenseAmount] = useState("");
   const [expenseCategory, setExpenseCategory] = useState<Category>("Food");
-  const [expenseDate, setExpenseDate] = useState(getTodayString());
+  const [expenseDate, setExpenseDate] = useState("");
   const [expenseNotes, setExpenseNotes] = useState("");
   const [expenseSubmitting, setExpenseSubmitting] = useState(false);
 
@@ -147,6 +146,17 @@ export default function Home() {
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState("");
   const [groupName, setGroupName] = useState("");
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const currentDate = getTodayString();
+      setToday(currentDate);
+      setExpenseDate(currentDate);
+      setSelectedYear(currentDate.slice(0, 4));
+      setAllYears([Number(currentDate.slice(0, 4))]);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   // Check auth on startup (session persistence)
   useEffect(() => {
@@ -172,7 +182,7 @@ export default function Home() {
   }, []);
 
   // Fetch expenses whenever year, month, or category changes
-  const loadExpenses = () => {
+  const loadExpenses = useCallback(() => {
     if (!user) return;
     setExpensesLoading(true);
     const params = new URLSearchParams();
@@ -202,36 +212,40 @@ export default function Home() {
         console.error("Failed to load personal expenses:", err);
       })
       .finally(() => setExpensesLoading(false));
-  };
+  }, [selectedCategory, selectedMonth, selectedYear, user]);
 
   useEffect(() => {
     if (user && screen === "dashboard") {
-      loadExpenses();
+      const timer = window.setTimeout(loadExpenses, 0);
+      return () => window.clearTimeout(timer);
     }
-  }, [user, screen, selectedYear, selectedMonth, selectedCategory]);
+  }, [loadExpenses, screen, user]);
 
   // Load groups when on dashboard
   useEffect(() => {
     if (!user) return;
-    setGroupsLoading(true);
-    apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
-      "/api/groups"
-    )
-      .then((response) => {
-        setGroups(
-          response.groups.map((g) => ({
-            id: g.id,
-            name: g.name,
-            members: g.member_count,
-            total: 0,
-            color: "bg-[#e9e8f7]",
-          }))
-        );
-      })
-      .catch((error: unknown) =>
-        setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
+    const timer = window.setTimeout(() => {
+      setGroupsLoading(true);
+      apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
+        "/api/groups"
       )
-      .finally(() => setGroupsLoading(false));
+        .then((response) => {
+          setGroups(
+            response.groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              members: g.member_count,
+              total: 0,
+              color: "bg-[#e9e8f7]",
+            }))
+          );
+        })
+        .catch((error: unknown) =>
+          setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
+        )
+        .finally(() => setGroupsLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [user]);
 
   // Google Login Handler
