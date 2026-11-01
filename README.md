@@ -16,6 +16,19 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
+## Database migrations
+
+Copy `.env.example` to `.env.local` and set `DATABASE_URL` to a PostgreSQL
+database. Then apply the versioned schema migrations:
+
+```bash
+npm run db:migrate
+```
+
+Migrations are stored in `src/db/migrations` and run in filename order. The
+migration runner records applied files in the `schema_migrations` table, so
+running the command again is safe.
+
 The initial screen lives in [`app/page.tsx`](./app/page.tsx). The visual
 foundation follows the warm neomorphic design direction supplied in the design
 archive: cream surfaces, coral actions, amber highlights, and Plus Jakarta Sans

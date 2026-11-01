@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AccountWorkspace } from "./account-workspace";
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { apiRequest } from "@/src/lib/api-client";
 
 type Section = "expenses" | "accounts" | "split";
 type Category = "Food" | "Stationery" | "Travel" | "Shopping" | "Bills";
@@ -11,7 +12,8 @@ type AccountType = "customer" | "supplier";
 type Expense = { id: number; title: string; category: Category; amount: number; date: string; icon: string };
 type AccountEntry = { id: number; amount: number; direction: Direction; date: string };
 type Account = { id: number; name: string; type: AccountType; entries: AccountEntry[] };
-type UserProfile = { name: string; phone: string };
+type UserProfile = { id: string; name: string; email: string };
+type Group = { id: string; name: string; members: number; total: number; color: string };
 type Screen = "splash" | "login" | "dashboard";
 
 const categoryStyles: Record<Category, { icon: string; background: string }> = {
@@ -23,7 +25,7 @@ const categoryStyles: Record<Category, { icon: string; background: string }> = {
 };
 const initialExpenses: Expense[] = [];
 const initialAccounts: Account[] = [];
-const initialGroups: { id: number; name: string; members: number; total: number; color: string }[] = [];
+const initialGroups: Group[] = [];
 
 function formatMoney(amount: number) { return `₹${amount.toLocaleString("en-IN")}`; }
 function formatDate(date: string) { return new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short" }).format(new Date(`${date}T00:00:00`)); }
@@ -32,8 +34,15 @@ function accountBalance(account: Account) { return account.entries.reduce((total
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [showProfile, setShowProfile] = useState(false);
   const [loginName, setLoginName] = useState("");
-  const [loginPhone, setLoginPhone] = useState("");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState("");
   const [section, setSection] = useState<Section>("expenses");
   const [expenses, setExpenses] = useState(initialExpenses);
   const [month, setMonth] = useState("2026-10");
@@ -57,37 +66,70 @@ export default function Home() {
   const groupedExpenses = monthExpenses.reduce<Record<string, Expense[]>>((result, expense) => { (result[expense.date] ??= []).push(expense); return result; }, {});
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const savedUser = window.localStorage.getItem("paisa-nakhne-user");
-      if (savedUser) {
-        try {
-          setUser(JSON.parse(savedUser) as UserProfile);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await apiRequest<{ user: UserProfile | null }>("/api/auth/me");
+        if (response.user) {
+          setUser(response.user);
           setScreen("dashboard");
-        } catch {
-          window.localStorage.removeItem("paisa-nakhne-user");
+        } else {
           setScreen("login");
         }
-      } else {
+      } catch {
         setScreen("login");
       }
     }, 1200);
     return () => window.clearTimeout(timer);
   }, []);
 
-  function login(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    if (!user) return;
+    setGroupsLoading(true);
+    setGroupsError("");
+    apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>("/api/groups")
+      .then((response) => {
+        setGroups(response.groups.map((group) => ({
+          id: group.id,
+          name: group.name,
+          members: group.member_count,
+          total: 0,
+          color: "bg-[#e9e8f7]",
+        })));
+      })
+      .catch((error: unknown) => setGroupsError(error instanceof Error ? error.message : "Could not load groups."))
+      .finally(() => setGroupsLoading(false));
+  }, [user]);
+
+  async function login(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const profile = { name: loginName.trim(), phone: loginPhone.trim() };
-    if (!profile.name || !profile.phone) return;
-    window.localStorage.setItem("paisa-nakhne-user", JSON.stringify(profile));
-    setUser(profile);
-    setScreen("dashboard");
+    setAuthError("");
+    setAuthLoading(true);
+    try {
+      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const response = await apiRequest<{ user: UserProfile }>(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          ...(authMode === "register" ? { name: loginName.trim() } : {}),
+          email: loginEmail.trim(),
+          password: loginPassword,
+        }),
+      });
+      setUser(response.user);
+      setScreen("dashboard");
+      setLoginPassword("");
+    } catch (error: unknown) {
+      setAuthError(error instanceof Error ? error.message : "Authentication failed.");
+    } finally {
+      setAuthLoading(false);
+    }
   }
 
-  function logout() {
-    window.localStorage.removeItem("paisa-nakhne-user");
+  async function logout() {
+    await apiRequest("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setUser(null);
     setLoginName("");
-    setLoginPhone("");
+    setLoginEmail("");
+    setLoginPassword("");
     setScreen("login");
   }
 
@@ -107,9 +149,24 @@ export default function Home() {
     });
     setAccountName(""); setAccountAmount("");
   }
-  function addGroup(event: FormEvent<HTMLFormElement>) {
+  async function addGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!groupName.trim()) return;
-    setGroups((current) => [...current, { id: Date.now(), name: groupName.trim(), members: 1, total: 0, color: "bg-[#e9e8f7]" }]); setGroupName("");
+    try {
+      const response = await apiRequest<{ group: { id: string; name: string; member_count: number } }>("/api/groups", {
+        method: "POST",
+        body: JSON.stringify({ name: groupName.trim(), currency: "INR" }),
+      });
+      setGroups((current) => [...current, {
+        id: response.group.id,
+        name: response.group.name,
+        members: response.group.member_count,
+        total: 0,
+        color: "bg-[#e9e8f7]",
+      }]);
+      setGroupName("");
+    } catch (error: unknown) {
+      setGroupsError(error instanceof Error ? error.message : "Could not create the group.");
+    }
   }
 
   if (screen === "splash") {
@@ -131,14 +188,17 @@ export default function Home() {
           <div className="mb-8 text-center">
             <div className="mx-auto flex size-16 items-center justify-center rounded-2xl bg-[var(--primary)] text-3xl font-extrabold text-white shadow-[0_12px_24px_rgba(240,93,72,0.2)]">₹</div>
             <h1 className="mt-5 text-3xl font-extrabold tracking-tight">Welcome to PaisaNakhne</h1>
-            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">Enter your information to create your personal expense dashboard.</p>
+            <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">{authMode === "login" ? "Sign in to manage your shared expenses." : "Create your account to start tracking shared expenses."}</p>
           </div>
           <form onSubmit={login} className="rounded-[2rem] bg-[var(--surface-card)] p-6 shadow-[0_14px_36px_rgba(75,52,45,0.07)] sm:p-8">
-            <label htmlFor="user-name" className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your name</label>
-            <input id="user-name" required autoFocus value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Enter your name" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
-            <label htmlFor="user-phone" className="mt-5 block text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Mobile number</label>
-            <input id="user-phone" required inputMode="tel" value={loginPhone} onChange={(event) => setLoginPhone(event.target.value)} placeholder="Enter your mobile number" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
-            <button type="submit" className="mt-6 w-full rounded-full bg-[var(--primary)] py-3.5 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(240,93,72,0.24)] transition hover:bg-[var(--primary-dark)]">Enter dashboard</button>
+            {authMode === "register" && <><label htmlFor="user-name" className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your name</label><input id="user-name" required autoFocus value={loginName} onChange={(event) => setLoginName(event.target.value)} placeholder="Enter your name" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" /></>}
+            <label htmlFor="user-email" className="mt-5 block text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Email</label>
+            <input id="user-email" required type="email" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="you@example.com" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
+            <label htmlFor="user-password" className="mt-5 block text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Password</label>
+            <input id="user-password" required minLength={8} type="password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="At least 8 characters" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--primary)]" />
+            {authError && <p role="alert" className="mt-3 text-sm font-bold text-[var(--primary)]">{authError}</p>}
+            <button disabled={authLoading} type="submit" className="mt-6 w-full rounded-full bg-[var(--primary)] py-3.5 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(240,93,72,0.24)] transition hover:bg-[var(--primary-dark)] disabled:opacity-60">{authLoading ? "Please wait..." : authMode === "login" ? "Enter dashboard" : "Create account"}</button>
+            <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }} className="mt-4 w-full text-sm font-bold text-[var(--primary)]">{authMode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}</button>
           </form>
         </section>
       </main>
@@ -150,16 +210,17 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[var(--background)] pb-10 text-[var(--foreground)]">
       <div className="mx-auto w-full max-w-6xl">
-        <header className="flex h-20 items-center justify-between px-5 sm:px-8"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[var(--primary)] text-xl font-extrabold text-white shadow-[0_8px_16px_rgba(240,93,72,0.2)]">₹</div><div><p className="text-base font-extrabold tracking-tight">PaisaNakhne</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]"><span className="size-1.5 rounded-full bg-[var(--status-receive)]" />Personal workspace</p></div></div><button type="button" onClick={logout} aria-label={`Log out ${user?.name}`} className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">{initials}</button></header>
+        <header className="relative flex h-20 items-center justify-between px-5 sm:px-8"><div className="flex items-center gap-3"><div className="flex size-10 items-center justify-center rounded-xl bg-[var(--primary)] text-xl font-extrabold text-white shadow-[0_8px_16px_rgba(240,93,72,0.2)]">₹</div><div><p className="text-base font-extrabold tracking-tight">PaisaNakhne</p><p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]"><span className="size-1.5 rounded-full bg-[var(--status-receive)]" />Personal workspace</p></div></div><button type="button" onClick={() => setShowProfile((current) => !current)} aria-label="Open profile information" aria-expanded={showProfile} className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-card)] text-sm font-extrabold text-[var(--primary)] shadow-sm ring-1 ring-[var(--border-subtle)]">{initials}</button>{showProfile && <div className="absolute right-5 top-16 z-10 w-64 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-4 text-left shadow-[0_14px_36px_rgba(75,52,45,0.12)] sm:right-8"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">User profile</p><p className="mt-2 text-lg font-extrabold">{user?.name}</p><p className="mt-1 text-sm text-[var(--text-secondary)]">{user?.email}</p><button type="button" onClick={logout} className="mt-4 w-full rounded-xl border border-[var(--border-subtle)] py-2.5 text-xs font-extrabold text-[var(--primary)]">Log out</button></div>}</header>
         <div className="px-5 sm:px-8">
           <div className="mb-6 rounded-2xl border border-[var(--border-subtle)] bg-[var(--surface-card)] p-1.5 shadow-sm"><nav aria-label="Workspace sections" className="grid grid-cols-3 gap-1">{([["expenses", "Expenses", "◫"], ["accounts", "Accounts", "◎"], ["split", "Split", "⊕"]] as const).map(([value, label, icon]) => <button key={value} type="button" onClick={() => setSection(value)} className={`rounded-xl px-2 py-3 text-center text-xs font-extrabold transition sm:text-sm ${section === value ? "bg-[var(--charcoal)] text-white shadow-sm" : "text-[var(--text-secondary)] hover:bg-[var(--surface-cream)]"}`}><span className="mr-1.5 text-base">{icon}</span>{label}</button>)}</nav></div>
-          <section className="mb-6 rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your dashboard</p><h1 className="mt-1 text-2xl font-extrabold">Welcome, {user?.name}!</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Logged in with {user?.phone}. Add your first expense or account to get started.</p></section>
+          <section className="mb-6 rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Your dashboard</p><h1 className="mt-1 text-2xl font-extrabold">Welcome, {user?.name}!</h1><p className="mt-2 text-sm text-[var(--text-secondary)]">Logged in with {user?.email}. Add your first expense or group to get started.</p></section>
 
           {section === "expenses" && <section aria-labelledby="expenses-heading" className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Monthly expense overview</p><h1 id="expenses-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">{formatMoney(monthTotal)}</h1><p className="mt-2 text-sm text-white/55">{monthExpenses.length} expenses recorded</p></div><select value={month} onChange={(event) => setMonth(event.target.value)} aria-label="Choose expense month" className="rounded-full bg-white/10 px-3 py-2 text-xs font-bold text-white outline-none"><option className="text-black" value="2026-10">October 2026</option><option className="text-black" value="2026-09">September 2026</option></select></div></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-[0_10px_30px_rgba(75,52,45,0.05)] sm:p-6"><div className="mb-5 flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Daily ledger</p><h2 className="mt-1 text-xl font-extrabold">Expenses by day</h2></div><button type="button" onClick={() => setShowExpenseForm((current) => !current)} className="rounded-full bg-[var(--primary)] px-4 py-2 text-xs font-extrabold text-white">+ Add</button></div>{showExpenseForm && <form onSubmit={addExpense} className="mb-5 rounded-2xl bg-[var(--surface-cream)] p-4"><div className="grid gap-3 sm:grid-cols-2"><input required value={expenseTitle} onChange={(event) => setExpenseTitle(event.target.value)} placeholder="Expense title" className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm outline-none" /><input required min="1" type="number" value={expenseAmount} onChange={(event) => setExpenseAmount(event.target.value)} placeholder="Amount ₹" className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm outline-none" /><select value={expenseCategory} onChange={(event) => setExpenseCategory(event.target.value as Category)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm font-semibold"><option>Food</option><option>Stationery</option><option>Travel</option><option>Shopping</option><option>Bills</option></select><input required type="date" value={expenseDate} onChange={(event) => setExpenseDate(event.target.value)} className="rounded-xl border border-[var(--border-subtle)] bg-white px-3 py-3 text-sm font-semibold" /></div><button className="mt-3 w-full rounded-xl bg-[var(--charcoal)] py-3 text-sm font-extrabold text-white">Save expense</button></form>}{monthExpenses.length === 0 && !showExpenseForm ? <p className="rounded-xl bg-[var(--surface-cream)] p-4 text-sm text-[var(--text-secondary)]">No expenses yet. Add your first expense above.</p> : <div className="space-y-5">{Object.entries(groupedExpenses).map(([date, items]) => <div key={date}><p className="mb-2 text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">{formatDate(date)} · {items.length} entries</p><div className="space-y-2">{items.map((expense) => <div key={expense.id} className="flex items-center gap-3 rounded-2xl border border-[var(--border-subtle)] p-3"><div className={`flex size-11 items-center justify-center rounded-xl text-lg ${categoryStyles[expense.category].background}`}>{expense.icon}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-extrabold">{expense.title}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{expense.category}</p></div><p className="text-sm font-extrabold">{formatMoney(expense.amount)}</p></div>)}</div></div>)}</div>}</div></div><aside className="hidden space-y-5 lg:block"><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-6 shadow-sm"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Quick actions</p><h2 className="mt-1 text-xl font-extrabold">Stay on top of spending</h2>{(["Food", "Stationery", "Travel", "Shopping"] as Category[]).map((category) => <div className="mt-4 flex items-center gap-3" key={category}><span className={`flex size-9 items-center justify-center rounded-xl ${categoryStyles[category].background}`}>{categoryStyles[category].icon}</span><span className="flex-1 text-sm font-bold">{category}</span><span className="text-sm font-extrabold">{formatMoney(monthExpenses.filter((item) => item.category === category).reduce((sum, item) => sum + item.amount, 0))}</span></div>)}</div><Link href="/groups/room-304-boys" className="block rounded-[1.5rem] bg-[var(--accent-yellow-light)] p-5"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">Shared expenses</p><p className="mt-1 text-lg font-extrabold">Room 304 Boys</p><p className="mt-2 text-sm text-[var(--text-secondary)]">View group activity →</p></Link></aside></section>}
 
-          {section === "accounts" && <AccountWorkspace accounts={accounts} setAccounts={setAccounts} />}\n          {false && section === "accounts" && <section aria-labelledby="accounts-heading" className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Account overview</p><h1 id="accounts-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">{formatMoney(customerTotal - supplierTotal)}</h1><p className="mt-2 text-sm text-white/55">Net outstanding across all accounts</p><div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-4"><div><p className="text-xs text-white/55">Customers owe you</p><p className="mt-1 font-extrabold text-[var(--secondary)]">{formatMoney(customerTotal)}</p></div><div><p className="text-xs text-white/55">You owe suppliers</p><p className="mt-1 font-extrabold text-[var(--status-receive)]">{formatMoney(supplierTotal)}</p></div></div></div><form onSubmit={addAccount} className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">New ledger entry</p><h2 className="mt-1 text-xl font-extrabold">Record money movement</h2><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setAccountDirection("gave")} className={`rounded-xl py-3 text-sm font-extrabold ${accountDirection === "gave" ? "bg-[var(--status-owe-bg)] text-[var(--primary)]" : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"}`}>You gave</button><button type="button" onClick={() => setAccountDirection("got")} className={`rounded-xl py-3 text-sm font-extrabold ${accountDirection === "got" ? "bg-[var(--status-receive-bg)] text-[var(--status-receive)]" : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"}`}>You got</button></div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => { setAccountView("customer"); setAccountDirection("gave"); }} className={`rounded-xl border py-2 text-xs font-bold ${accountView === "customer" ? "border-[var(--primary)] text-[var(--primary)]" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`}>Customer</button><button type="button" onClick={() => { setAccountView("supplier"); setAccountDirection("gave"); }} className={`rounded-xl border py-2 text-xs font-bold ${accountView === "supplier" ? "border-[var(--primary)] text-[var(--primary)]" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`}>Supplier</button></div><input required value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder={`Name in ${accountView} ledger`} className="mt-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm outline-none" /><input required min="1" type="number" value={accountAmount} onChange={(event) => setAccountAmount(event.target.value)} placeholder="Amount ₹" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm outline-none" /><button className="mt-3 w-full rounded-xl bg-[var(--primary)] py-3 text-sm font-extrabold text-white">Save {accountDirection === "gave" ? "given" : "received"} entry</button></form></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Account ledgers</p><h2 className="mt-1 text-xl font-extrabold">Customers &amp; suppliers</h2></div><span className="rounded-full bg-[var(--surface-cream)] px-3 py-1 text-xs font-bold">{visibleAccounts.length} {accountView}s</span></div><div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-cream)] p-1"><button type="button" onClick={() => setAccountView("customer")} className={`rounded-lg py-2 text-sm font-extrabold ${accountView === "customer" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Customers</button><button type="button" onClick={() => setAccountView("supplier")} className={`rounded-lg py-2 text-sm font-extrabold ${accountView === "supplier" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Suppliers</button></div><div className="mt-5 space-y-3">{visibleAccounts.map((account) => { const balance = accountBalance(account); return <details key={account.id} className="rounded-2xl border border-[var(--border-subtle)] p-3"><summary className="flex cursor-pointer list-none items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-cream)] text-xs font-extrabold">{account.name.slice(0, 2).toUpperCase()}</span><span className="min-w-0 flex-1 truncate text-sm font-extrabold">{account.name}</span><span className={`text-right text-sm font-extrabold ${balance === 0 ? "text-[var(--status-receive)]" : balance > 0 ? "text-[var(--primary)]" : "text-[var(--status-receive)]"}`}>{balance === 0 ? "Settled up" : `${balance > 0 ? "₹" : "-₹"}${Math.abs(balance).toLocaleString("en-IN")}`}<small className="block text-[10px] font-bold text-[var(--text-secondary)]">{balance === 0 ? "All clear" : balance > 0 ? "outstanding" : "credit"}</small></span></summary><div className="mt-3 space-y-2 border-t border-[var(--border-subtle)] pt-3">{account.entries.map((entry) => <div key={entry.id} className="flex items-center justify-between text-xs"><span className={entry.direction === "gave" ? "text-[var(--primary)]" : "text-[var(--status-receive)]"}>{entry.direction === "gave" ? "You gave" : "You got"} · {formatDate(entry.date)}</span><span className="font-extrabold">{formatMoney(entry.amount)}</span></div>)}{balance === 0 && <p className="rounded-lg bg-[var(--status-receive-bg)] p-2 text-xs font-bold text-[var(--status-receive)]">Settled up — no amount pending.</p>}</div></details>; })}</div></div></section>}
+          {section === "accounts" && <AccountWorkspace accounts={accounts} setAccounts={setAccounts} />}
+          {false && section === "accounts" && <section aria-labelledby="accounts-heading" className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Account overview</p><h1 id="accounts-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">{formatMoney(customerTotal - supplierTotal)}</h1><p className="mt-2 text-sm text-white/55">Net outstanding across all accounts</p><div className="mt-7 grid grid-cols-2 gap-3 border-t border-white/10 pt-4"><div><p className="text-xs text-white/55">Customers owe you</p><p className="mt-1 font-extrabold text-[var(--secondary)]">{formatMoney(customerTotal)}</p></div><div><p className="text-xs text-white/55">You owe suppliers</p><p className="mt-1 font-extrabold text-[var(--status-receive)]">{formatMoney(supplierTotal)}</p></div></div></div><form onSubmit={addAccount} className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">New ledger entry</p><h2 className="mt-1 text-xl font-extrabold">Record money movement</h2><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setAccountDirection("gave")} className={`rounded-xl py-3 text-sm font-extrabold ${accountDirection === "gave" ? "bg-[var(--status-owe-bg)] text-[var(--primary)]" : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"}`}>You gave</button><button type="button" onClick={() => setAccountDirection("got")} className={`rounded-xl py-3 text-sm font-extrabold ${accountDirection === "got" ? "bg-[var(--status-receive-bg)] text-[var(--status-receive)]" : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"}`}>You got</button></div><div className="mt-3 grid grid-cols-2 gap-2"><button type="button" onClick={() => { setAccountView("customer"); setAccountDirection("gave"); }} className={`rounded-xl border py-2 text-xs font-bold ${accountView === "customer" ? "border-[var(--primary)] text-[var(--primary)]" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`}>Customer</button><button type="button" onClick={() => { setAccountView("supplier"); setAccountDirection("gave"); }} className={`rounded-xl border py-2 text-xs font-bold ${accountView === "supplier" ? "border-[var(--primary)] text-[var(--primary)]" : "border-[var(--border-subtle)] text-[var(--text-secondary)]"}`}>Supplier</button></div><input required value={accountName} onChange={(event) => setAccountName(event.target.value)} placeholder={`Name in ${accountView} ledger`} className="mt-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm outline-none" /><input required min="1" type="number" value={accountAmount} onChange={(event) => setAccountAmount(event.target.value)} placeholder="Amount ₹" className="mt-2 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm outline-none" /><button className="mt-3 w-full rounded-xl bg-[var(--primary)] py-3 text-sm font-extrabold text-white">Save {accountDirection === "gave" ? "given" : "received"} entry</button></form></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><div className="flex items-center justify-between"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Account ledgers</p><h2 className="mt-1 text-xl font-extrabold">Customers &amp; suppliers</h2></div><span className="rounded-full bg-[var(--surface-cream)] px-3 py-1 text-xs font-bold">{visibleAccounts.length} {accountView}s</span></div><div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-[var(--surface-cream)] p-1"><button type="button" onClick={() => setAccountView("customer")} className={`rounded-lg py-2 text-sm font-extrabold ${accountView === "customer" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Customers</button><button type="button" onClick={() => setAccountView("supplier")} className={`rounded-lg py-2 text-sm font-extrabold ${accountView === "supplier" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Suppliers</button></div><div className="mt-5 space-y-3">{visibleAccounts.map((account) => { const balance = accountBalance(account); return <details key={account.id} className="rounded-2xl border border-[var(--border-subtle)] p-3"><summary className="flex cursor-pointer list-none items-center gap-3"><span className="flex size-10 items-center justify-center rounded-full bg-[var(--surface-cream)] text-xs font-extrabold">{account.name.slice(0, 2).toUpperCase()}</span><span className="min-w-0 flex-1 truncate text-sm font-extrabold">{account.name}</span><span className={`text-right text-sm font-extrabold ${balance === 0 ? "text-[var(--status-receive)]" : balance > 0 ? "text-[var(--primary)]" : "text-[var(--status-receive)]"}`}>{balance === 0 ? "Settled up" : `${balance > 0 ? "₹" : "-₹"}${Math.abs(balance).toLocaleString("en-IN")}`}<small className="block text-[10px] font-bold text-[var(--text-secondary)]">{balance === 0 ? "All clear" : balance > 0 ? "outstanding" : "credit"}</small></span></summary><div className="mt-3 space-y-2 border-t border-[var(--border-subtle)] pt-3">{account.entries.map((entry) => <div key={entry.id} className="flex items-center justify-between text-xs"><span className={entry.direction === "gave" ? "text-[var(--primary)]" : "text-[var(--status-receive)]"}>{entry.direction === "gave" ? "You gave" : "You got"} · {formatDate(entry.date)}</span><span className="font-extrabold">{formatMoney(entry.amount)}</span></div>)}{balance === 0 && <p className="rounded-lg bg-[var(--status-receive-bg)] p-2 text-xs font-bold text-[var(--status-receive)]">Settled up — no amount pending.</p>}</div></details>; })}</div></div></section>}
 
-          {section === "split" && <section aria-labelledby="split-heading" className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Friends workspace</p><h1 id="split-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">Split fairly.</h1><p className="mt-3 text-sm leading-6 text-white/60">Create groups, add shared expenses, and keep the math clear.</p></div><form onSubmit={addGroup} className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">New group</p><h2 className="mt-1 text-xl font-extrabold">Who are you splitting with?</h2><div className="mt-4 flex gap-2"><input required value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="e.g. Weekend trip" className="min-w-0 flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm" /><button className="rounded-xl bg-[var(--primary)] px-4 text-sm font-extrabold text-white">Create</button></div></form></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Your groups</p><h2 className="mt-1 text-xl font-extrabold">Shared expense groups</h2><div className="mt-5 grid gap-3 sm:grid-cols-2">{groups.map((group) => <Link key={group.id} href={group.name === "Room 304 Boys" ? "/groups/room-304-boys" : "/add-expense"} className="rounded-2xl border border-[var(--border-subtle)] p-4"><span className={`flex size-11 items-center justify-center rounded-xl text-xl ${group.color}`}>👥</span><p className="mt-4 font-extrabold">{group.name}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{group.members} members · {formatMoney(group.total)}</p><span className="mt-4 block text-xs font-bold text-[var(--primary)]">Open group →</span></Link>)}</div></div></section>}
+          {section === "split" && <section aria-labelledby="split-heading" className="grid gap-6 lg:grid-cols-[0.85fr_1.15fr]"><div className="space-y-5"><div className="rounded-[1.75rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_18px_40px_rgba(30,30,36,0.15)] sm:p-8"><p className="text-xs font-bold uppercase tracking-[0.12em] text-white/55">Friends workspace</p><h1 id="split-heading" className="mt-2 text-4xl font-extrabold tracking-[-0.04em]">Split fairly.</h1><p className="mt-3 text-sm leading-6 text-white/60">Create groups, add shared expenses, and keep the math clear.</p></div><form onSubmit={addGroup} className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">New group</p><h2 className="mt-1 text-xl font-extrabold">Who are you splitting with?</h2><div className="mt-4 flex gap-2"><input required value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="e.g. Weekend trip" className="min-w-0 flex-1 rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-3 py-3 text-sm" /><button className="rounded-xl bg-[var(--primary)] px-4 text-sm font-extrabold text-white">Create</button></div></form></div><div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 shadow-sm sm:p-6"><p className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">Your groups</p><h2 className="mt-1 text-xl font-extrabold">Shared expense groups</h2>{groupsLoading && <p className="mt-5 text-sm text-[var(--text-secondary)]">Loading your groups...</p>}{groupsError && <p role="alert" className="mt-5 rounded-xl bg-[var(--status-owe-bg)] p-4 text-sm font-bold text-[var(--primary)]">{groupsError}</p>}{!groupsLoading && !groupsError && groups.length === 0 && <p className="mt-5 rounded-xl bg-[var(--surface-cream)] p-4 text-sm text-[var(--text-secondary)]">No groups yet. Create your first group above.</p>}<div className="mt-5 grid gap-3 sm:grid-cols-2">{groups.map((group) => <Link key={group.id}           href={`/groups/room-304-boys?groupId=${group.id}`} className="rounded-2xl border border-[var(--border-subtle)] p-4"><span className={`flex size-11 items-center justify-center rounded-xl text-xl ${group.color}`}>👥</span><p className="mt-4 font-extrabold">{group.name}</p><p className="mt-1 text-xs text-[var(--text-secondary)]">{group.members} members</p><span className="mt-4 block text-xs font-bold text-[var(--primary)]">Open group →</span></Link>)}</div></div></section>}
         </div>
       </div>
     </main>
