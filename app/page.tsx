@@ -208,6 +208,7 @@ export default function Home() {
         invalid_google_profile: "Google returned an incomplete account profile.",
         oauth_error: "Google sign-in failed. Please try again.",
         oauth_server_error: "The server could not finish Google sign-in. Check that PostgreSQL is running.",
+        database_unavailable: "The website database cannot be reached. Please contact the site owner.",
         google_access_denied: "Google sign-in was cancelled.",
       };
       const errorMessage =

@@ -89,6 +89,16 @@ export async function GET(request: Request) {
     return response;
   } catch (error) {
     console.error("Google OAuth error:", error);
-    return Response.redirect(`${origin}/?error=oauth_server_error`);
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code)
+        : "";
+    const callbackError =
+      errorCode === "ECONNREFUSED" ||
+      errorCode === "ENOTFOUND" ||
+      errorCode === "ETIMEDOUT"
+        ? "database_unavailable"
+        : "oauth_server_error";
+    return Response.redirect(`${origin}/?error=${callbackError}`);
   }
 }
