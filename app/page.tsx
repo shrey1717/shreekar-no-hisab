@@ -103,6 +103,10 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showProfile, setShowProfile] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
 
   // Authentication state
   const [authError, setAuthError] = useState("");
@@ -113,7 +117,7 @@ export default function Home() {
 
   // Expenses & Yearly/Monthly filters
   const [selectedYear, setSelectedYear] = useState<string>(String(currentYear));
-  const [selectedMonth, setSelectedMonth] = useState<string>("all");
+  const [selectedMonth, setSelectedMonth] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [expenses, setExpenses] = useState<PersonalExpense[]>([]);
   const [allYears, setAllYears] = useState<number[]>([currentYear]);
@@ -152,6 +156,7 @@ export default function Home() {
       setExpenseDate(currentDate);
       const yrStr = currentDate.slice(0, 4);
       setSelectedYear(yrStr);
+      setSelectedMonth(`${yrStr}-${currentDate.slice(5, 7)}`);
       setAllYears([Number(yrStr)]);
     }, 0);
     return () => window.clearTimeout(timer);
@@ -247,17 +252,19 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [screen, user]);
 
-  // Direct Google Sign-In Handler (Only 1 option, direct sign in)
-  async function handleGoogleSignIn() {
+  async function handleAuth(event?: FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
     setAuthLoading(true);
     setAuthError("");
     try {
-      const res = await apiRequest<{ user: UserProfile }>("/api/auth/google-login", {
+      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const res = await apiRequest<{ user: UserProfile }>(endpoint, {
         method: "POST",
-        body: JSON.stringify({
-          email: "shreydesai102@gmail.com",
-          name: "Shrey Desai",
-        }),
+        body: JSON.stringify(
+          authMode === "login"
+            ? { email: authEmail, password: authPassword }
+            : { name: authName, email: authEmail, password: authPassword },
+        ),
       });
 
       if (res.user) {
@@ -267,8 +274,7 @@ export default function Home() {
         throw new Error("Unable to complete Google sign-in. Please try again.");
       }
     } catch (err: unknown) {
-      console.error("Google Sign-In Error:", err);
-      setAuthError(err instanceof Error ? err.message : "Failed to sign in with Google.");
+      setAuthError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
     } finally {
       setAuthLoading(false);
     }
@@ -282,7 +288,6 @@ export default function Home() {
     setScreen("login");
   }
 
-  // Add Expense to PostgreSQL
   async function addExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const amountNum = Number(expenseAmount);
@@ -313,7 +318,6 @@ export default function Home() {
     }
   }
 
-  // Delete Expense from PostgreSQL
   async function deleteExpense(id: string) {
     if (!confirm("Delete this expense?")) return;
     try {
@@ -351,11 +355,6 @@ export default function Home() {
     }
   }
 
-  // Max spending month for relative progress bars
-  const maxMonthSpend = useMemo(() => {
-    return Math.max(...monthlyBreakdown.map((m) => m.totalAmount), 1);
-  }, [monthlyBreakdown]);
-
   // Grouped expenses by date for daily ledger display
   const groupedExpenses = useMemo(() => {
     return expenses.reduce<Record<string, PersonalExpense[]>>((result, exp) => {
@@ -388,13 +387,13 @@ export default function Home() {
             ₹
           </div>
           <h1 className="mt-6 text-3xl font-extrabold tracking-tight">Shreekar No Hisab</h1>
-          <p className="mt-2 text-sm text-white/60">PaisaNakhne · Loading your expenses &amp; ledgers...</p>
+          <p className="mt-2 text-sm text-white/60">Loading your expenses and ledgers...</p>
         </section>
       </main>
     );
   }
 
-  // --- 2. LOGIN SCREEN (First-time / Logged out: ONLY ONE OPTION: SIGN WITH GOOGLE) ---
+  // --- 2. AUTHENTICATION SCREEN ---
   if (screen === "login") {
     return (
       <main className="min-h-screen bg-[var(--background)] px-5 py-10 flex items-center justify-center">
@@ -407,21 +406,21 @@ export default function Home() {
               Shreekar No Hisab
             </h1>
             <p className="mt-2 text-sm leading-6 text-[var(--text-secondary)]">
-              Personal &amp; shared expense tracker with year-wise analytics and customer khata.
+              Keep your personal and shared expenses organized.
             </p>
           </div>
 
-          <div className="rounded-[2rem] bg-[var(--surface-card)] p-8 shadow-[0_14px_36px_rgba(75,52,45,0.07)] border border-[var(--border-subtle)] text-center">
+          <div className="rounded-[2rem] bg-[var(--surface-card)] p-8 shadow-[0_14px_36px_rgba(75,52,45,0.07)] border border-[var(--border-subtle)]">
             <div className="mb-6">
               <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--status-receive-bg)] px-3.5 py-1 text-xs font-bold text-[var(--status-receive)]">
                 <span className="size-2 rounded-full bg-[var(--status-receive)] animate-ping" />
-                Google Sign-In
+                Account access
               </span>
               <h2 className="mt-4 text-2xl font-extrabold text-[var(--foreground)]">
-                Sign in to your account
+                {authMode === "login" ? "Welcome back" : "Create your account"}
               </h2>
               <p className="mt-2 text-xs text-[var(--text-secondary)] leading-5">
-                Sign in once with Google. The website will remember your session so you won&apos;t have to log in again.
+                {authMode === "login" ? "Sign in to continue." : "Start organizing your expenses."}
               </p>
             </div>
 
@@ -431,14 +430,18 @@ export default function Home() {
               </div>
             )}
 
-            {/* THE ONLY OPTION: DIRECT SIGN IN WITH GOOGLE */}
+            {authMode === "register" && (
+              <input required value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder="Full name" className="mb-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
+            )}
+            <input required type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email address" className="mb-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
+            <input required minLength={authMode === "register" ? 8 : 1} type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password" className="mb-4 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
             <button
               disabled={authLoading}
               type="button"
-              onClick={handleGoogleSignIn}
-              className="w-full flex items-center justify-center gap-3 rounded-full border border-[#dadce0] bg-white py-4 px-6 text-base font-bold text-[#3c4043] shadow-md hover:bg-[#f8fafd] hover:border-[#c6c9cc] hover:shadow-lg transition active:scale-[0.99] disabled:opacity-60 cursor-pointer"
+              onClick={() => handleAuth()}
+              className="w-full rounded-full bg-[var(--primary)] py-4 px-6 text-base font-bold text-white shadow-md transition hover:bg-[var(--primary-dark)] active:scale-[0.99] disabled:opacity-60"
             >
-              <svg className="size-6 shrink-0" viewBox="0 0 24 24">
+              <svg className="hidden" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -456,12 +459,12 @@ export default function Home() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{authLoading ? "Connecting with Google..." : "Sign in with Google"}</span>
+              <span>{authLoading ? "Please wait..." : authMode === "login" ? "Sign in" : "Create account"}</span>
             </button>
 
-            <p className="mt-6 text-[11px] text-[var(--text-secondary)]">
-              🔒 Direct sign-in with Google · Connected to PostgreSQL database
-            </p>
+            <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }} className="mt-5 w-full text-center text-xs font-bold text-[var(--primary)] hover:underline">
+              {authMode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}
+            </button>
           </div>
         </section>
       </main>
@@ -482,7 +485,7 @@ export default function Home() {
               <p className="text-base font-extrabold tracking-tight">Shreekar No Hisab</p>
               <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">
                 <span className="size-1.5 rounded-full bg-[var(--status-receive)]" />
-                Live PostgreSQL Database
+                Expense Tracker
               </p>
             </div>
           </div>
@@ -515,7 +518,7 @@ export default function Home() {
                   </div>
                 </div>
                 <div className="py-2 text-[11px] text-[var(--text-secondary)]">
-                  ✓ Signed in with Google
+                  ✓ Signed in
                 </div>
                 <button
                   type="button"
@@ -571,7 +574,7 @@ export default function Home() {
                         type="button"
                         onClick={() => {
                           setSelectedYear(String(yr));
-                          setSelectedMonth("all");
+                          setSelectedMonth(`${yr}-01`);
                         }}
                         className={`rounded-xl px-3 py-1.5 text-xs font-extrabold transition ${
                           selectedYear === String(yr)
@@ -682,7 +685,7 @@ export default function Home() {
                         type="submit"
                         className="w-full rounded-xl bg-[var(--charcoal)] py-2.5 text-xs font-extrabold text-white transition hover:bg-black"
                       >
-                        {expenseSubmitting ? "Saving to Database..." : "Save Expense"}
+                        {expenseSubmitting ? "Saving..." : "Save Expense"}
                       </button>
                     </div>
                   </form>
@@ -710,7 +713,7 @@ export default function Home() {
                   <p className="mt-2 text-3xl font-extrabold text-[var(--charcoal)]">
                     {formatMoney(yearStats.averageMonthlyAmount)}
                   </p>
-                  <p className="mt-1 text-xs text-[var(--text-secondary)]">Across 12 months</p>
+                  <p className="mt-1 text-xs text-[var(--text-secondary)]">Average for the selected year</p>
                 </div>
 
                 <div className="rounded-[1.5rem] bg-[var(--surface-card)] p-5 border border-[var(--border-subtle)] shadow-sm">
@@ -730,100 +733,80 @@ export default function Home() {
                     Active Filter
                   </p>
                   <p className="mt-2 text-xl font-extrabold text-[var(--status-receive)]">
-                    {selectedMonth === "all"
-                      ? `All Months (${selectedYear})`
-                      : `Month ${selectedMonth}`}
+                    {selectedMonth.replace(`${selectedYear}-`, "")} {selectedYear}
                   </p>
                   <button
                     type="button"
                     onClick={() => {
-                      setSelectedMonth("all");
+                      setSelectedMonth(`${selectedYear}-01`);
                       setSelectedCategory("all");
                     }}
                     className="mt-1 text-xs font-bold text-[var(--primary)] hover:underline cursor-pointer"
                   >
-                    Reset to view whole year →
+                    View January →
                   </button>
                 </div>
               </div>
 
-              {/* ALL YEAR'S MONTHWISE EXPENSE BREAKDOWN (12 MONTH MATRIX) */}
+              {/* Monthly Expense Overview with Dropdown */}
               <section className="rounded-[1.75rem] border border-[var(--border-subtle)] bg-[var(--surface-card)] p-6 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
                   <div>
                     <span className="text-xs font-bold uppercase tracking-[0.12em] text-[var(--text-secondary)]">
-                      All Year&apos;s Monthwise Expense
+                      Monthly Expenses
                     </span>
                     <h2 className="mt-1 text-2xl font-extrabold">
-                      {selectedYear} Monthly Breakdown (Jan – Dec)
+                      {selectedYear} Expense Overview
                     </h2>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedMonth("all")}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-extrabold transition cursor-pointer ${
-                        selectedMonth === "all"
-                          ? "bg-[var(--charcoal)] text-white"
-                          : "bg-[var(--surface-cream)] text-[var(--text-secondary)]"
-                      }`}
+                  <div className="flex items-center gap-3">
+                    <select
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(e.target.value)}
+                      className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-2.5 text-sm font-bold outline-none focus:border-[var(--primary)] cursor-pointer"
                     >
-                      Show All 12 Months
-                    </button>
+                      {monthlyBreakdown.map((m) => (
+                        <option key={m.monthKey} value={m.monthKey}>
+                          {m.monthName} {selectedYear}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
-                {/* 12-Month Cards Grid with Interactive Bar Indicators */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                  {monthlyBreakdown.map((m) => {
-                    const isSelected = selectedMonth === m.monthKey;
-                    const percent = maxMonthSpend > 0 ? (m.totalAmount / maxMonthSpend) * 100 : 0;
-                    return (
+                {/* Selected Month Total Display */}
+                {true ? (
+                  <div className="rounded-2xl bg-[var(--surface-cream)] p-5 border border-[var(--border-subtle)]">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)]">
+                          {monthlyBreakdown.find((m) => m.monthKey === selectedMonth)?.monthName || ""} {selectedYear} Total
+                        </p>
+                        <p className="mt-2 text-3xl font-extrabold text-[var(--primary)]">
+                          {formatMoney(
+                            monthlyBreakdown.find((m) => m.monthKey === selectedMonth)?.totalAmount || 0
+                          )}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                          {monthlyBreakdown.find((m) => m.monthKey === selectedMonth)?.count || 0} transactions
+                        </p>
+                      </div>
                       <button
-                        key={m.monthKey}
                         type="button"
-                        onClick={() =>
-                          setSelectedMonth((curr) => (curr === m.monthKey ? "all" : m.monthKey))
-                        }
-                        className={`rounded-2xl p-4 text-left border transition relative overflow-hidden flex flex-col justify-between cursor-pointer ${
-                          isSelected
-                            ? "border-[var(--primary)] bg-[var(--status-owe-bg)] shadow-md ring-2 ring-[var(--primary)]"
-                            : "border-[var(--border-subtle)] bg-[var(--surface-cream)] hover:border-[var(--primary)]/50"
-                        }`}
+                        onClick={() => setSelectedMonth(`${selectedYear}-01`)}
+                        className="rounded-xl bg-[var(--charcoal)] px-4 py-2 text-xs font-bold text-white hover:bg-black transition cursor-pointer"
                       >
-                        <div>
-                          <div className="flex items-center justify-between">
-                            <span className="text-xs font-extrabold uppercase tracking-wider text-[var(--text-secondary)]">
-                              {m.monthName}
-                            </span>
-                            <span className="text-[11px] font-bold text-[var(--text-secondary)]">
-                              {m.count} txns
-                            </span>
-                          </div>
-                          <p className="mt-3 text-lg font-extrabold text-[var(--charcoal)]">
-                            {formatMoney(m.totalAmount)}
-                          </p>
-                        </div>
-
-                        {/* Progress Bar for comparative spending */}
-                        <div className="mt-3">
-                          <div className="h-1.5 w-full bg-[var(--border-subtle)] rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-[var(--primary)] rounded-full transition-all duration-500"
-                              style={{ width: `${percent}%` }}
-                            />
-                          </div>
-                        </div>
+                        View January
                       </button>
-                    );
-                  })}
-                </div>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Multi-Year Overview History */}
                 {allYearsSummary.length > 1 && (
                   <div className="mt-6 pt-5 border-t border-[var(--border-subtle)]">
                     <p className="text-xs font-bold uppercase tracking-[0.1em] text-[var(--text-secondary)] mb-3">
-                      Multi-Year Comparison (All Years in Database)
+                      Multi-Year Comparison
                     </p>
                     <div className="flex flex-wrap gap-3">
                       {allYearsSummary.map((yrData) => (
@@ -862,9 +845,7 @@ export default function Home() {
                         Daily Ledger
                       </p>
                       <h3 className="mt-0.5 text-lg font-extrabold">
-                        {selectedMonth === "all"
-                          ? `All Expenses for ${selectedYear}`
-                          : `Expenses for ${selectedMonth}`}
+                        Expenses for {monthlyBreakdown.find((m) => m.monthKey === selectedMonth)?.monthName || selectedMonth} {selectedYear}
                       </h3>
                     </div>
                     <span className="rounded-full bg-[var(--surface-cream)] px-3 py-1 text-xs font-bold">
@@ -875,13 +856,13 @@ export default function Home() {
                   <div className="mt-4 space-y-4">
                     {expensesLoading ? (
                       <p className="py-6 text-center text-sm text-[var(--text-secondary)]">
-                        Loading entries from database...
+                        Loading expenses...
                       </p>
                     ) : expenses.length === 0 ? (
                       <div className="rounded-2xl bg-[var(--surface-cream)] p-8 text-center">
                         <p className="text-base font-bold">No expenses found</p>
                         <p className="mt-1 text-xs text-[var(--text-secondary)]">
-                          Click &quot;+ Add New Expense&quot; above to store your first entry in the database.
+                          Click &quot;+ Add New Expense&quot; above to record your first entry.
                         </p>
                       </div>
                     ) : (

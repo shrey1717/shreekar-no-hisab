@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Shreekar No Hisab - PaisaNakhne",
+  title: "Shreekar No Hisab",
   description: "Smart personal and shared expense tracker, yearly monthwise analytics, and customer khata.",
 };
 

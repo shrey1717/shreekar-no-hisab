@@ -1,6 +1,6 @@
 import argon2 from "argon2";
 import { db } from "@/src/db/client";
-import { createSession } from "@/src/lib/auth";
+import { buildSessionCookieHeader, createSession } from "@/src/lib/auth";
 import { ApiError, errorResponse } from "@/src/lib/api-error";
 import { registerSchema } from "@/src/lib/auth-schemas";
 
@@ -16,9 +16,11 @@ export async function POST(request: Request) {
     const email = parsed.data.email.toLowerCase();
     const passwordHash = await argon2.hash(parsed.data.password);
     const client = await db.connect();
+    let transactionOpen = false;
 
     try {
       await client.query("BEGIN");
+      transactionOpen = true;
       const result = await client.query<{ id: string; name: string; email: string }>(
         `INSERT INTO users (name, email, password_hash)
          VALUES ($1, $2, $3)
@@ -26,11 +28,15 @@ export async function POST(request: Request) {
         [name, email, passwordHash],
       );
       await client.query("COMMIT");
-      await createSession(result.rows[0].id);
-
-      return Response.json({ user: result.rows[0] }, { status: 201 });
+      transactionOpen = false;
+      const sessionToken = await createSession(result.rows[0].id);
+      const response = Response.json({ user: result.rows[0] }, { status: 201 });
+      response.headers.set("Set-Cookie", buildSessionCookieHeader(sessionToken));
+      return response;
     } catch (error: unknown) {
-      await client.query("ROLLBACK");
+      if (transactionOpen) {
+        await client.query("ROLLBACK");
+      }
       if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
         throw new ApiError("EMAIL_ALREADY_REGISTERED", "An account with this email already exists.", 409);
       }

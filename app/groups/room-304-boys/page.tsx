@@ -77,7 +77,7 @@ function GroupDetailsContent() {
   return (
     <main className="min-h-screen bg-[var(--background)] pb-10">
       <header className="mx-auto flex h-20 w-full max-w-6xl items-center justify-between px-5 sm:px-8">
-        <div className="flex items-center gap-3"><Link href="/" aria-label="Back to dashboard" className="flex size-10 items-center justify-center rounded-full text-xl text-[var(--charcoal)] transition hover:bg-[var(--surface-card)]">←</Link><div><p className="text-lg font-extrabold tracking-tight">Group details</p><p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">PaisaNakhne</p></div></div>
+        <div className="flex items-center gap-3"><Link href="/" aria-label="Back to dashboard" className="flex size-10 items-center justify-center rounded-full text-xl text-[var(--charcoal)] transition hover:bg-[var(--surface-card)]">←</Link><div><p className="text-lg font-extrabold tracking-tight">Group details</p><p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[var(--text-secondary)]">Shared expenses</p></div></div>
         {groups.length > 1 && <select value={groupId} onChange={(event) => setGroupId(event.target.value)} className="rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-card)] px-3 py-2 text-xs font-bold">{groups.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}
       </header>
       <div className="mx-auto grid w-full max-w-6xl gap-6 px-5 sm:px-8 lg:grid-cols-[0.8fr_1.2fr]">

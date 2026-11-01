@@ -25,8 +25,16 @@ export function errorResponse(error: unknown): Response {
   }
 
   console.error("Unhandled API error:", error);
+  const errorCode =
+    typeof error === "object" && error !== null && "code" in error
+      ? String(error.code)
+      : "";
   const message =
-    error instanceof Error ? error.message : "An unexpected error occurred.";
+    errorCode === "ECONNREFUSED"
+      ? "The database is unavailable. Please start PostgreSQL and try again."
+      : error instanceof Error && error.message
+        ? error.message
+        : "An unexpected error occurred.";
 
   return Response.json(
     {
