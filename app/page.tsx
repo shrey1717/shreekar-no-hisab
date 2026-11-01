@@ -326,7 +326,12 @@ export default function Home() {
         setScreen("dashboard");
       }
     } catch (err: unknown) {
-      setAuthError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
+      const message = err instanceof Error ? err.message : "";
+      setAuthError(
+        message.includes("auth/api-key-not-valid")
+          ? "Firebase rejected this API key. In Google Cloud, allow the Identity Toolkit API for this key, then restart the app."
+          : message || "Unable to sign in. Please try again.",
+      );
     } finally {
       setAuthLoading(false);
     }
