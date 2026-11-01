@@ -1,5 +1,5 @@
 import { connection } from "next/server";
-import { createSession, findOrCreateGoogleUser } from "@/src/lib/auth";
+import { buildSessionCookieHeader, createSession, findOrCreateGoogleUser } from "@/src/lib/auth";
 
 export async function GET(request: Request) {
   await connection();
@@ -53,8 +53,10 @@ export async function GET(request: Request) {
       avatarUrl: profile.picture,
     });
 
-    await createSession(user.id);
-    return Response.redirect(`${origin}/`);
+    const sessionToken = await createSession(user.id);
+    const response = Response.redirect(`${origin}/`);
+    response.headers.set("Set-Cookie", buildSessionCookieHeader(sessionToken));
+    return response;
   } catch (error) {
     console.error("Google OAuth error:", error);
     return Response.redirect(`${origin}/?error=oauth_error`);

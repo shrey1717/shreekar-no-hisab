@@ -54,6 +54,7 @@ export async function findOrCreateGoogleUser({
         [googleId ?? null, avatarUrl ?? null, user.id],
       );
     }
+
     return {
       id: user.id,
       name: user.name,
@@ -69,6 +70,50 @@ export async function findOrCreateGoogleUser({
     [userName, normalizedEmail, googleId ?? null, avatarUrl ?? null],
   );
 
+  return inserted.rows[0];
+}
+
+export async function findOrCreateFirebaseUser({
+  uid,
+  phoneNumber,
+  email,
+  name,
+}: {
+  uid: string;
+  phoneNumber: string;
+  email?: string;
+  name?: string;
+}): Promise<AuthUser> {
+  const normalizedEmail = email?.trim().toLowerCase() || `phone-${uid}@phone.local`;
+  const existing = await db.query<AuthUser>(
+    `SELECT id, name, email, avatar_url
+     FROM users
+     WHERE deleted_at IS NULL
+       AND (firebase_uid = $1 OR phone_number = $2 OR LOWER(email) = $3)
+     LIMIT 1`,
+    [uid, phoneNumber, normalizedEmail],
+  );
+
+  if (existing.rows[0]) {
+    const user = existing.rows[0];
+    await db.query(
+      `UPDATE users
+       SET firebase_uid = $1,
+           phone_number = $2,
+           email = CASE WHEN email LIKE 'phone-%@phone.local' THEN $3 ELSE email END,
+           updated_at = NOW()
+       WHERE id = $4`,
+      [uid, phoneNumber, normalizedEmail, user.id],
+    );
+    return user;
+  }
+
+  const inserted = await db.query<AuthUser>(
+    `INSERT INTO users (name, email, phone_number, firebase_uid)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, name, email, avatar_url`,
+    [name?.trim() || phoneNumber, normalizedEmail, phoneNumber, uid],
+  );
   return inserted.rows[0];
 }
 

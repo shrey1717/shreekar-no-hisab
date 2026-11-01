@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "tsx src/db/migrate.ts",
+    "db:reset-local": "tsx scripts/reset-local-database.ts",
     "test": "tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {

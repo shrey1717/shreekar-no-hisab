@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AccountWorkspace } from "./account-workspace";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiRequest } from "@/src/lib/api-client";
@@ -22,6 +23,36 @@ type UserProfile = {
   email: string;
   avatar_url?: string | null;
 };
+
+type FirebaseAuth = {
+  RecaptchaVerifier: new (
+    container: string,
+    parameters: { size: "invisible" },
+    auth: unknown,
+  ) => { render: () => Promise<number> };
+  signInWithPhoneNumber: (
+    phoneNumber: string,
+    appVerifier: unknown,
+  ) => Promise<{ confirm: (code: string) => Promise<{ user: { getIdToken: () => Promise<string> } }> }>;
+  currentUser: FirebaseUser | null;
+};
+
+type FirebaseUser = {
+  getIdToken: () => Promise<string>;
+  linkWithPopup: (provider: unknown) => Promise<{ user: FirebaseUser }>;
+};
+
+type FirebaseCompat = {
+  initializeApp: (config: Record<string, string>) => unknown;
+  apps: unknown[];
+  auth: (() => FirebaseAuth) & { GoogleAuthProvider: new () => unknown };
+};
+
+declare global {
+  interface Window {
+    firebase?: FirebaseCompat;
+  }
+}
 
 type PersonalExpense = {
   id: string;
@@ -97,20 +128,22 @@ function getTodayString() {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [today, setToday] = useState("");
   const currentYear = today ? Number(today.slice(0, 4)) : 0;
 
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
   const [showProfile, setShowProfile] = useState(false);
-  const [authMode, setAuthMode] = useState<"login" | "register">("login");
-  const [authName, setAuthName] = useState("");
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
+  const [authMethod, setAuthMethod] = useState<"phone" | "google">("phone");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneCode, setPhoneCode] = useState("");
+  const [phoneConfirmation, setPhoneConfirmation] = useState<Awaited<ReturnType<FirebaseAuth["signInWithPhoneNumber"]>> | null>(null);
 
   // Authentication state
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
+  const [linkMessage, setLinkMessage] = useState("");
 
   // Workspace navigation
   const [section, setSection] = useState<Section>("expenses");
@@ -252,29 +285,89 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [screen, user]);
 
-  async function handleAuth(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
+  async function handlePhoneAuth() {
     setAuthLoading(true);
     setAuthError("");
     try {
-      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const res = await apiRequest<{ user: UserProfile }>(endpoint, {
-        method: "POST",
-        body: JSON.stringify(
-          authMode === "login"
-            ? { email: authEmail, password: authPassword }
-            : { name: authName, email: authEmail, password: authPassword },
-        ),
-      });
-
-      if (res.user) {
+      if (!window.firebase) {
+        throw new Error("Phone sign-in is still loading. Please try again.");
+      }
+      if (!phoneConfirmation) {
+        const config = {
+          apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+          authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+          projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+          storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+          messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+          appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+        };
+        if (!window.firebase.apps.length) window.firebase.initializeApp(config);
+        const firebaseAuth = window.firebase.auth();
+        const verifier = new firebaseAuth.RecaptchaVerifier(
+          "phone-recaptcha",
+          { size: "invisible" },
+          firebaseAuth,
+        );
+        const confirmation = await firebaseAuth.signInWithPhoneNumber(
+          `+91${phoneNumber.replace(/\D/g, "")}`,
+          verifier,
+        );
+        setPhoneConfirmation(confirmation);
+        setAuthError("");
+        return;
+      } else {
+        const result = await phoneConfirmation.confirm(phoneCode);
+        const idToken = await result.user.getIdToken();
+        const res = await apiRequest<{ user: UserProfile }>("/api/auth/firebase", {
+          method: "POST",
+          body: JSON.stringify({ idToken }),
+        });
         setUser(res.user);
         setScreen("dashboard");
-      } else {
-        throw new Error("Unable to complete Google sign-in. Please try again.");
       }
     } catch (err: unknown) {
       setAuthError(err instanceof Error ? err.message : "Unable to sign in. Please try again.");
+    } finally {
+      setAuthLoading(false);
+    }
+
+  }
+
+  function handleGoogleSignIn() {
+    router.push("/api/auth/google");
+  }
+
+  async function linkGoogleAccount() {
+    setAuthLoading(true);
+    setLinkMessage("");
+    try {
+      if (!window.firebase) {
+        throw new Error("Google linking is still loading. Please try again.");
+      }
+      const config = {
+        apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
+        authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
+        projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
+        storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
+        messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "",
+        appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "",
+      };
+      if (!window.firebase.apps.length) window.firebase.initializeApp(config);
+      const firebaseAuth = window.firebase.auth();
+      if (!firebaseAuth.currentUser) {
+        throw new Error("Please sign in with your phone number before linking Google.");
+      }
+      const provider = new window.firebase.auth.GoogleAuthProvider();
+      const linked = await firebaseAuth.currentUser.linkWithPopup(provider);
+      const idToken = await linked.user.getIdToken();
+      const response = await apiRequest<{ user: UserProfile }>("/api/auth/firebase", {
+        method: "POST",
+        body: JSON.stringify({ idToken }),
+      });
+      setUser(response.user);
+      setLinkMessage("Google is linked to this account.");
+    } catch (error: unknown) {
+      setLinkMessage(error instanceof Error ? error.message : "Could not link Google.");
     } finally {
       setAuthLoading(false);
     }
@@ -417,10 +510,10 @@ export default function Home() {
                 Account access
               </span>
               <h2 className="mt-4 text-2xl font-extrabold text-[var(--foreground)]">
-                {authMode === "login" ? "Welcome back" : "Create your account"}
+                Welcome back
               </h2>
               <p className="mt-2 text-xs text-[var(--text-secondary)] leading-5">
-                {authMode === "login" ? "Sign in to continue." : "Start organizing your expenses."}
+                Sign in to continue.
               </p>
             </div>
 
@@ -430,15 +523,24 @@ export default function Home() {
               </div>
             )}
 
-            {authMode === "register" && (
-              <input required value={authName} onChange={(e) => setAuthName(e.target.value)} placeholder="Full name" className="mb-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
+            <div className="mb-4 grid grid-cols-2 gap-2 rounded-xl bg-[var(--surface-cream)] p-1">
+              <button type="button" onClick={() => setAuthMethod("phone")} className={`rounded-lg py-2 text-xs font-extrabold ${authMethod === "phone" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Phone number</button>
+              <button type="button" onClick={() => setAuthMethod("google")} className={`rounded-lg py-2 text-xs font-extrabold ${authMethod === "google" ? "bg-white text-[var(--primary)] shadow-sm" : "text-[var(--text-secondary)]"}`}>Google</button>
+            </div>
+            {authMethod === "phone" && (
+              <>
+                <div className="mb-3 flex rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)]">
+                  <span className="flex items-center border-r border-[var(--border-subtle)] px-3 text-sm font-bold text-[var(--text-secondary)]">+91</span>
+                  <input required inputMode="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} placeholder="98765 43210" className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm outline-none" />
+                </div>
+                {phoneConfirmation && <input required inputMode="numeric" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value)} placeholder="Enter verification code" className="mb-4 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />}
+                <div id="phone-recaptcha" />
+              </>
             )}
-            <input required type="email" value={authEmail} onChange={(e) => setAuthEmail(e.target.value)} placeholder="Email address" className="mb-3 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
-            <input required minLength={authMode === "register" ? 8 : 1} type="password" value={authPassword} onChange={(e) => setAuthPassword(e.target.value)} placeholder="Password" className="mb-4 w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] px-4 py-3 text-sm outline-none focus:border-[var(--primary)]" />
             <button
               disabled={authLoading}
               type="button"
-              onClick={() => handleAuth()}
+              onClick={authMethod === "phone" ? handlePhoneAuth : handleGoogleSignIn}
               className="w-full rounded-full bg-[var(--primary)] py-4 px-6 text-base font-bold text-white shadow-md transition hover:bg-[var(--primary-dark)] active:scale-[0.99] disabled:opacity-60"
             >
               <svg className="hidden" viewBox="0 0 24 24" aria-hidden="true">
@@ -459,12 +561,10 @@ export default function Home() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>{authLoading ? "Please wait..." : authMode === "login" ? "Sign in" : "Create account"}</span>
+              <span>{authLoading ? "Please wait..." : authMethod === "google" ? "Continue with Google" : phoneConfirmation ? "Verify phone number" : "Send verification code"}</span>
             </button>
 
-            <button type="button" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }} className="mt-5 w-full text-center text-xs font-bold text-[var(--primary)] hover:underline">
-              {authMode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}
-            </button>
+            <p className="mt-5 text-center text-[11px] text-[var(--text-secondary)]">Phone and Google sign-ins can use the same account when linked.</p>
           </div>
         </section>
       </main>
@@ -520,6 +620,23 @@ export default function Home() {
                 <div className="py-2 text-[11px] text-[var(--text-secondary)]">
                   ✓ Signed in
                 </div>
+                {user?.email.endsWith("@phone.local") && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={linkGoogleAccount}
+                      disabled={authLoading}
+                      className="w-full rounded-xl border border-[var(--border-subtle)] bg-[var(--surface-cream)] py-2 text-xs font-extrabold text-[var(--charcoal)] hover:bg-[var(--accent-yellow-light)] disabled:opacity-60"
+                    >
+                      {authLoading ? "Linking..." : "Link Google account"}
+                    </button>
+                    {linkMessage && (
+                      <p role="status" className="mt-2 text-[11px] font-bold text-[var(--status-receive)]">
+                        {linkMessage}
+                      </p>
+                    )}
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={logout}
