@@ -15,7 +15,7 @@ export default function Welcome() {
         </div>
         <div className="mb-6 flex items-center gap-3">
           <div className="flex size-11 items-center justify-center rounded-xl bg-[var(--primary)] text-xl font-extrabold text-white">₹</div>
-          <span className="text-lg font-extrabold tracking-tight">PaisaNakhne</span>
+          <span className="text-lg font-extrabold tracking-tight">Shreekar No Hisab</span>
         </div>
         <section className="overflow-hidden rounded-[2rem] bg-[var(--charcoal)] p-6 text-white shadow-[0_20px_50px_rgba(30,30,36,0.16)] sm:p-8">
           <div className="mb-8 flex items-end justify-between">
@@ -42,7 +42,7 @@ export default function Welcome() {
           {joined && <p role="status" className="mt-3 text-sm font-bold text-[var(--status-receive)]">Invite accepted. Welcome to Room 304!</p>}
           <button type="button" onClick={() => setJoined(true)} className="mt-5 w-full rounded-full bg-[var(--primary)] py-3.5 text-sm font-extrabold text-white shadow-[0_10px_22px_rgba(240,93,72,0.24)]">Get OTP &amp; join room</button>
           <div className="my-5 flex items-center gap-3 text-xs font-semibold text-[var(--text-secondary)]"><span className="h-px flex-1 bg-[var(--border-subtle)]" />or<span className="h-px flex-1 bg-[var(--border-subtle)]" /></div>
-          <button type="button" className="w-full rounded-full border border-[var(--border-subtle)] bg-[var(--surface-cream)] py-3 text-sm font-extrabold text-[var(--charcoal)]">Continue with Google</button>
+          <Link href="/" className="block w-full text-center rounded-full border border-[var(--border-subtle)] bg-[var(--surface-cream)] py-3 text-sm font-extrabold text-[var(--charcoal)] hover:bg-[var(--accent-yellow-light)] transition">Continue with Google</Link>
         </section>
       </section>
     </main>
