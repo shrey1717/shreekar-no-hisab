@@ -98,7 +98,7 @@ function getTodayString() {
 
 export default function Home() {
   const [today, setToday] = useState("");
-  const currentYear = today ? Number(today.slice(0, 4)) : new Date().getFullYear();
+  const currentYear = today ? Number(today.slice(0, 4)) : 0;
 
   const [screen, setScreen] = useState<Screen>("splash");
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -146,12 +146,15 @@ export default function Home() {
 
   // Initialize today's date safely
   useEffect(() => {
-    const currentDate = getTodayString();
-    setToday(currentDate);
-    setExpenseDate(currentDate);
-    const yrStr = currentDate.slice(0, 4);
-    setSelectedYear(yrStr);
-    setAllYears([Number(yrStr)]);
+    const timer = window.setTimeout(() => {
+      const currentDate = getTodayString();
+      setToday(currentDate);
+      setExpenseDate(currentDate);
+      const yrStr = currentDate.slice(0, 4);
+      setSelectedYear(yrStr);
+      setAllYears([Number(yrStr)]);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   // Check auth on startup (session persistence - only asks to login first time)
@@ -212,32 +215,36 @@ export default function Home() {
 
   useEffect(() => {
     if (user && screen === "dashboard") {
-      loadExpenses();
+      const timer = window.setTimeout(loadExpenses, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [loadExpenses, screen, user]);
 
   // Load groups when on dashboard
   useEffect(() => {
     if (!user || screen !== "dashboard") return;
-    setGroupsLoading(true);
-    apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
-      "/api/groups"
-    )
-      .then((response) => {
-        setGroups(
-          response.groups.map((g) => ({
-            id: g.id,
-            name: g.name,
-            members: g.member_count,
-            total: 0,
-            color: "bg-[#e9e8f7]",
-          }))
-        );
-      })
-      .catch((error: unknown) =>
-        setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
+    const timer = window.setTimeout(() => {
+      setGroupsLoading(true);
+      apiRequest<{ groups: Array<{ id: string; name: string; member_count: number }> }>(
+        "/api/groups"
       )
-      .finally(() => setGroupsLoading(false));
+        .then((response) => {
+          setGroups(
+            response.groups.map((g) => ({
+              id: g.id,
+              name: g.name,
+              members: g.member_count,
+              total: 0,
+              color: "bg-[#e9e8f7]",
+            }))
+          );
+        })
+        .catch((error: unknown) =>
+          setGroupsError(error instanceof Error ? error.message : "Could not load groups.")
+        )
+        .finally(() => setGroupsLoading(false));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [screen, user]);
 
   // Direct Google Sign-In Handler (Only 1 option, direct sign in)

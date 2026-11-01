@@ -1,5 +1,5 @@
 import { buildSessionCookieHeader, createSession, findOrCreateGoogleUser } from "@/src/lib/auth";
-import { ApiError, errorResponse } from "@/src/lib/api-error";
+import { errorResponse } from "@/src/lib/api-error";
 
 interface GoogleIdTokenPayload {
   email?: string;
